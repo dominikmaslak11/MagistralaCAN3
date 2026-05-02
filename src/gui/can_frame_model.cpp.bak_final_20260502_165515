@@ -41,15 +41,14 @@ QVariant CanFrameModel::data(const QModelIndex &index, int role) const {
         }
     }
 
-    // Kolor tła – tylko jeśli podświetlanie włączone
-    if (role == Qt::BackgroundRole) {
-        // 1. Zielone dla kandydatów asocjacji (zawsze)
-        if (highlightedIds_.contains(f.id)) {
-            return QColor(180, 255, 180);
-        }
-        // 2. Pomarańczowe dla zmienionych (gdy podświetlanie włączone)
-        if (highlightEnabled_ && previousFrames_.contains(row)) {
-            return QColor(255, 200, 140);
+    // Kolor tła – tylko jeśli podświetlanie jest włączone
+        // Zielone tło dla kandydatów asocjacji (zawsze widoczne)
+    if (role == Qt::BackgroundRole && highlightedIds_.contains(f.id)) {
+        return QColor(180, 255, 180);
+    }
+    if (role == Qt::BackgroundRole && highlightEnabled_) {
+        if (previousFrames_.contains(row)) {
+            return QColor(255, 200, 140);  // pomarańczowy dla zmienionych
         }
     }
 
@@ -72,8 +71,7 @@ void CanFrameModel::setOverwriteMode(bool enable) {
     if (!enable) {
         idToRow_.clear();
         previousFrames_.clear();
-        if (rowCount() > 0)
-            emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
+        safeDataChanged(0,0, rowCount()-1, columnCount()-1, {Qt::BackgroundRole});
     }
 }
 
@@ -85,8 +83,8 @@ void CanFrameModel::setHighlightEnabled(bool enable) {
     highlightEnabled_ = enable;
     if (!enable) {
         previousFrames_.clear();
-        if (rowCount() > 0)
-            emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
+        // odśwież widok, aby zniknęły kolory
+        safeDataChanged(0,0, rowCount()-1, columnCount()-1, {Qt::BackgroundRole});
     }
 }
 
@@ -101,7 +99,6 @@ CanFrame CanFrameModel::frameAt(int row) const {
 }
 
 void CanFrameModel::addFrame(const CanFrame &frame) {
-    if (hiddenIds_.contains(frame.id)) return;
     QVector<int> changedBytes;
 
     if (overwriteMode_) {
@@ -118,7 +115,7 @@ void CanFrameModel::addFrame(const CanFrame &frame) {
             }
             frames_[row] = frame;
             if (highlightEnabled_) {
-                previousFrames_[row] = oldFrame;
+                previousFrames_[row] = oldFrame;   // zapamiętaj tylko gdy podświetlanie włączone
             }
             emit dataChanged(index(row, 0), index(row, columnCount()-1));
             emit frameUpdated(row, frame, changedBytes);
@@ -161,41 +158,20 @@ void CanFrameModel::clear() {
     endResetModel();
 }
 
-void CanFrameModel::setHighlightedCandidates(const QSet<uint32_t> &ids) {
-    highlightedIds_ = ids;
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
-}
-
 int CanFrameModel::findRowById(canid_t id) const {
     auto it = idToRow_.constFind(id);
     return (it != idToRow_.cend()) ? it.value() : -1;
 }
 
-void CanFrameModel::setColorForId(uint32_t id, const QColor &color) {
-    customColors_[id] = color;
-    // odśwież wszystkie wiersze z tym ID (może być wiele, ale uproszczamy)
-    for (int row = 0; row < rowCount(); ++row) {
-        if (frames_.at(row).id == id) {
-            emit dataChanged(index(row, 0), index(row, columnCount()-1), {Qt::BackgroundRole});
-        }
-    }
+void CanFrameModel::setHighlightedCandidates(const QSet<uint32_t> &ids) {
+    highlightedIds_ = ids;
+    safeDataChanged(0,0, rowCount()-1, columnCount()-1, {Qt::BackgroundRole});
 }
 
-void CanFrameModel::hideId(uint32_t id) {
-    hiddenIds_.insert(id);
-    // Usuwamy istniejące ramki z tym ID
-    for (int row = rowCount()-1; row >= 0; --row) {
-        if (frames_.at(row).id == id) {
-            beginRemoveRows(QModelIndex(), row, row);
-            frames_.removeAt(row);
-            idToRow_.remove(id);
-            endRemoveRows();
-        }
-    }
-}
-
-void CanFrameModel::showId(uint32_t id) {
-    hiddenIds_.remove(id);
-    // Ramki z tym ID będą ponownie dodawane przy następnym wystąpieniu
+void CanFrameModel::safeDataChanged(int topRow, int bottomRow, const QVector<int> &roles) {
+    if (rowCount() == 0) return;
+    int maxRow = rowCount() - 1;
+    topRow = qBound(0, topRow, maxRow);
+    bottomRow = qBound(topRow, bottomRow, maxRow);
+    safeDataChanged(topRow, 0, bottomRow, columnCount()-1, roles);
 }

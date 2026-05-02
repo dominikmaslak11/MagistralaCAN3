@@ -23,8 +23,6 @@ public:
     void processFrame(const CanFrame &frame);
     void setEventActive(bool active);
     void reset();
-    void setWindowSec(double sec);
-    double windowSec() const;
 
     QVector<Candidate> getCandidates(int topN = 20) const;
     QSet<uint32_t> candidateIds() const;

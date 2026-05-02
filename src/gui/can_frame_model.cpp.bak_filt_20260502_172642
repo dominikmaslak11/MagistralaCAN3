@@ -101,7 +101,6 @@ CanFrame CanFrameModel::frameAt(int row) const {
 }
 
 void CanFrameModel::addFrame(const CanFrame &frame) {
-    if (hiddenIds_.contains(frame.id)) return;
     QVector<int> changedBytes;
 
     if (overwriteMode_) {
@@ -170,32 +169,4 @@ void CanFrameModel::setHighlightedCandidates(const QSet<uint32_t> &ids) {
 int CanFrameModel::findRowById(canid_t id) const {
     auto it = idToRow_.constFind(id);
     return (it != idToRow_.cend()) ? it.value() : -1;
-}
-
-void CanFrameModel::setColorForId(uint32_t id, const QColor &color) {
-    customColors_[id] = color;
-    // odśwież wszystkie wiersze z tym ID (może być wiele, ale uproszczamy)
-    for (int row = 0; row < rowCount(); ++row) {
-        if (frames_.at(row).id == id) {
-            emit dataChanged(index(row, 0), index(row, columnCount()-1), {Qt::BackgroundRole});
-        }
-    }
-}
-
-void CanFrameModel::hideId(uint32_t id) {
-    hiddenIds_.insert(id);
-    // Usuwamy istniejące ramki z tym ID
-    for (int row = rowCount()-1; row >= 0; --row) {
-        if (frames_.at(row).id == id) {
-            beginRemoveRows(QModelIndex(), row, row);
-            frames_.removeAt(row);
-            idToRow_.remove(id);
-            endRemoveRows();
-        }
-    }
-}
-
-void CanFrameModel::showId(uint32_t id) {
-    hiddenIds_.remove(id);
-    // Ramki z tym ID będą ponownie dodawane przy następnym wystąpieniu
 }

@@ -27,9 +27,7 @@ public:
 public slots:
     void addFrame(const CanFrame &frame);
     void clear();
-    void setColorForId(uint32_t id, const QColor &color);
-    void hideId(uint32_t id);
-    void showId(uint32_t id);
+    void safeDataChanged(int topRow, int bottomRow, const QVector<int> &roles = {Qt::BackgroundRole});
     void setHighlightedCandidates(const QSet<uint32_t> &ids);
 
 signals:
@@ -43,8 +41,6 @@ private:
     bool overwriteMode_ = false;
     bool highlightEnabled_ = true;
     QSet<uint32_t> highlightedIds_;
-    QMap<uint32_t, QColor> customColors_;
-    QSet<uint32_t> hiddenIds_;
     static const int maxFrames = 100000;
 };
 

@@ -1,0 +1,286 @@
+#include <QApplication>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QTableView>
+#include <QLabel>
+#include <QHeaderView>
+#include <QThread>
+#include <QInputDialog>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QSpinBox>
+#include <QTimer>
+#include "gui/can_frame_model.h"
+#include "gui/can_frame_detail_view.h"
+#include "gui/throttled_frame_model.h"
+#include "gui/candump_exporter.h"
+#include "gui/candidate_list_view.h"
+#include "gui/byte_correlation_view.h"
+#include "ml/value_assoc_learner.h"
+#include "lua/lua_engine.h"
+#include "ml/assoc_learner.h"
+#include "can/can_worker.h"
+
+static QFile logFile;
+static QTextStream logStream;
+
+void initLog() {
+    logFile.setFileName("magistrala3.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        logStream.setDevice(&logFile);
+    }
+}
+
+void debugLog(const QString &msg) {
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    if (logFile.isOpen()) {
+        logStream << "[" << timestamp << "] " << msg << Qt::endl;
+        logStream.flush();
+    }
+    qDebug().noquote() << "[" << timestamp << "] " << msg;
+}
+
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    initLog();
+    debugLog("Aplikacja startuje");
+
+    QMainWindow window;
+    window.setWindowTitle("MagistralaCAN3 – Sniffer");
+    window.resize(1100, 550);
+
+    auto *central = new QWidget;
+    auto *mainLayout = new QVBoxLayout(central);
+
+    // --- Panel sterowania ---
+    auto *controlLayout = new QHBoxLayout;
+    auto *addChannelBtn = new QPushButton("Dodaj kanał");
+    auto *removeChannelBtn = new QPushButton("Usuń kanał");
+    auto *clearBtn = new QPushButton("Wyczyść");
+    auto *saveBtn = new QPushButton("Zapisz candump");
+    auto *overwriteCheck = new QCheckBox("Nadpisywanie");
+    auto *highlightCheck = new QCheckBox("Podświetlaj zmiany");
+    highlightCheck->setChecked(true);
+    auto *eventCheck = new QCheckBox("Zdarzenie");
+    auto *iterSpin = new QSpinBox;
+    iterSpin->setRange(1, 100);
+    iterSpin->setValue(1);
+    auto *iterBtn = new QPushButton("Iteruj");
+    auto *showAllCandidatesBtn = new QPushButton("Pokaż wszystkich");
+    auto *valueEdit = new QLineEdit; valueEdit->setPlaceholderText("Wartość (np. 85.5)");
+    auto *addSampleBtn = new QPushButton("Dodaj próbkę");
+    auto *computeCorrBtn = new QPushButton("Oblicz korelacje");
+    auto *modeCombo = new QComboBox;
+    modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
+
+    controlLayout->addWidget(addChannelBtn);
+    controlLayout->addWidget(removeChannelBtn);
+    controlLayout->addWidget(clearBtn);
+    controlLayout->addWidget(saveBtn);
+    controlLayout->addWidget(overwriteCheck);
+    controlLayout->addWidget(highlightCheck);
+    controlLayout->addWidget(eventCheck);
+    controlLayout->addWidget(new QLabel("Iteracji:"));
+    controlLayout->addWidget(iterSpin);
+    controlLayout->addWidget(iterBtn);
+    auto *loadLuaBtn = new QPushButton("Wczytaj skrypt Lua");
+    controlLayout->addWidget(loadLuaBtn);
+    controlLayout->addWidget(showAllCandidatesBtn);
+    controlLayout->addWidget(valueEdit);
+    controlLayout->addWidget(addSampleBtn);
+    controlLayout->addWidget(computeCorrBtn);
+    controlLayout->addWidget(new QLabel("Tryb:")); controlLayout->addWidget(modeCombo);
+    mainLayout->addLayout(controlLayout);
+
+    // --- Główny obszar: tabela + szczegóły + lista kandydatów ---
+    auto *splitter = new QSplitter(Qt::Horizontal);
+    auto *model = new CanFrameModel;
+    auto *tableView = new QTableView;
+    tableView->setModel(model);
+    tableView->horizontalHeader()->setStretchLastSection(true);
+    splitter->addWidget(tableView);
+
+    auto *detailView = new CanFrameDetailView;
+    splitter->addWidget(detailView);
+
+    auto *candidateListView = new CandidateListView;
+    candidateListView->setMinimumWidth(200);
+    splitter->addWidget(candidateListView);
+    auto *byteCorrView = new ByteCorrelationView;
+    splitter->addWidget(byteCorrView);
+
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(2, 1);
+    mainLayout->addWidget(splitter);
+    window.setCentralWidget(central);
+
+    // --- Obiekty ---
+    CandumpExporter exporter;
+    AssocLearner learner(2.0);
+    ValueAssocLearner valueLearner(2.0);
+    LuaEngine luaEngine;
+    
+
+    // --- Połączenia podstawowe ---
+    QObject::connect(overwriteCheck, &QCheckBox::toggled, model, &CanFrameModel::setOverwriteMode);
+    QObject::connect(highlightCheck, &QCheckBox::toggled, model, &CanFrameModel::setHighlightEnabled);
+
+    QObject::connect(tableView->selectionModel(), &QItemSelectionModel::currentRowChanged,
+        [model, detailView](const QModelIndex &idx, const QModelIndex &) {
+            if (!idx.isValid()) detailView->clearFrame();
+            else detailView->showFrame(model->frameAt(idx.row()));
+        });
+    QObject::connect(model, &CanFrameModel::frameUpdated,
+        [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
+            if (tableView->selectionModel()->isSelected(model->index(row,0)))
+                detailView->showFrame(f);
+            detailView->highlightChanges(changed);
+        });
+
+    // Eksport candump
+    QObject::connect(saveBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz ramki", "candump.log", "Candump (*.log *.txt)");
+        if (!path.isEmpty()) {
+            QList<CanFrame> frames;
+            for (int i = 0; i < model->rowCount(); ++i) frames.append(model->frameAt(i));
+            exporter.exportToFile(frames, path, "vcan0");
+        }
+    });
+
+    // Uczenie asocjacyjne
+    QObject::connect(model, &CanFrameModel::frameUpdated, [&learner](int row, const CanFrame &frame, const QVector<int> &changed) {
+        Q_UNUSED(row); Q_UNUSED(changed);
+        learner.processFrame(frame);
+    });
+
+    QObject::connect(eventCheck, &QCheckBox::toggled, &learner, &AssocLearner::setEventActive);
+
+    // Przycisk "Iteruj" – wykonuje iteracje z aktywnym zdarzeniem
+    QObject::connect(iterBtn, &QPushButton::clicked, [&]() {
+        int n = iterSpin->value();
+        bool eventActive = eventCheck->isChecked();
+
+        // Wykonaj iteracje
+        learner.setEventActive(eventActive);
+        learner.performIterations(n, eventActive);
+        learner.setEventActive(false);   // powrót do normalnego trybu
+
+        // Pobierz przefiltrowane wyniki (min score 0.1)
+        auto candidates = learner.getFilteredCandidates(20, 0.1);
+        candidateListView->setCandidates(candidates);
+
+        // Podświetl tylko istotnych kandydatów
+        QSet<uint32_t> ids;
+        for (const auto &c : candidates) ids.insert(c.id);
+        model->setHighlightedCandidates(ids);
+
+        debugLog(QString("Iteracja: wykonano %1 próbek, znaleziono %2 kandydatów")
+                 .arg(n).arg(candidates.size()));
+    });
+
+    // Automatyczne odświeżanie listy kandydatów co 2 sekundy
+    QTimer *candidateTimer = new QTimer(&app);
+    QObject::connect(candidateTimer, &QTimer::timeout, [&]() {
+        auto candidates = learner.getCandidates(20);
+        candidateListView->setCandidates(candidates);
+        QSet<uint32_t> ids;
+        for (const auto &c : candidates) ids.insert(c.id);
+        model->setHighlightedCandidates(ids);
+    });
+    candidateTimer->start(2000);
+
+    // Dodawanie kanału
+    QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
+        QString ifname = QInputDialog::getText(&window, "Nowy kanał", "Nazwa interfejsu:", QLineEdit::Normal, "vcan0");
+        if (!ifname.isEmpty()) {
+            debugLog(QString("Dodawanie kanału: %1").arg(ifname));
+
+            QThread *thread = new QThread;
+            CanWorker *worker = new CanWorker;
+            worker->setInterface(ifname);
+
+            QString modeStr = modeCombo->currentText();
+            CanWorker::Mode mode = CanWorker::CAN20;
+            if (modeStr == "CAN FD") mode = CanWorker::CANFD;
+            else if (modeStr == "J1939") mode = CanWorker::J1939;
+            worker->setMode(mode);
+            worker->moveToThread(thread);
+
+            ThrottledFrameModel *throttler = new ThrottledFrameModel(model);
+
+            QObject::connect(thread, &QThread::started, worker, &CanWorker::process);
+            QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
+            QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+            QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+            thread->start();
+        }
+    });
+
+    QObject::connect(clearBtn, &QPushButton::clicked, model, &CanFrameModel::clear);
+
+    
+    // Value association
+    QObject::connect(addSampleBtn, &QPushButton::clicked, [&]() {
+        bool ok;
+        double val = valueEdit->text().toDouble(&ok);
+        if (ok) {
+            valueLearner.addValueSample(val);
+            debugLog(QString("Dodano próbkę: %1").arg(val));
+        }
+    });
+
+    QObject::connect(computeCorrBtn, &QPushButton::clicked, [&]() {
+        auto correlations = valueLearner.computeCorrelations(30);
+        byteCorrView->setCorrelations(correlations);
+        debugLog(QString("Obliczono korelacje, znaleziono %1").arg(correlations.size()));
+    });
+
+    QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &frame, const QVector<int> &changed) {
+        Q_UNUSED(row); Q_UNUSED(changed);
+        valueLearner.processFrame(frame);
+    });
+
+    
+    // Lua script
+    QObject::connect(loadLuaBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
+        if (!path.isEmpty()) {
+            luaEngine.loadScript(path);
+        }
+    });
+
+    QObject::connect(&luaEngine, &LuaEngine::scriptOutput, [](const QString &msg) {
+        debugLog(QString("Lua: %1").arg(msg));
+    });
+    QObject::connect(&luaEngine, &LuaEngine::scriptError, [](const QString &err) {
+        debugLog(QString("Lua ERROR: %1").arg(err));
+    });
+    QObject::connect(&luaEngine, &LuaEngine::sendFrameRequested, [&](uint32_t id, const QByteArray &data) {
+        // Wysyłka ramki – użyj CanWorker? Lepiej przez CanFrameSender, który jeszcze nie istnieje.
+        // Tymczasowo użyjemy bezpośrednio socketcanadaptera.
+        // Na razie logujemy, że frame został wysłany (pełna implementacja w kolejnym skrypcie)
+        debugLog(QString("Lua: wysyłam ramkę 0x%1, dane: %2").arg(id, 3, 16, QChar('0')).arg(QString::fromUtf8(data.toHex())));
+    });
+
+    // Podłącz LuaEngine do każdej przychodzącej ramki (poprzez sygnał modelu)
+    QObject::connect(model, &CanFrameModel::frameUpdated, [&luaEngine](int row, const CanFrame &frame, const QVector<int> &changed) {
+        Q_UNUSED(row); Q_UNUSED(changed);
+        luaEngine.handleFrame(frame);
+    });
+
+    window.show();
+    int ret = app.exec();
+    debugLog("Aplikacja zamknięta");
+    if (logFile.isOpen()) logFile.close();
+    return ret;
+}

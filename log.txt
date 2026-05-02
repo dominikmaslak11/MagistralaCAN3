@@ -1,128 +1,62 @@
 ┌──(nz2xzhkzfeewkgbu㉿y5enjsya4t4pv4fn)-[~/MagistralaCAN3]
 └─$ ./update.sh
-🔧 MagistralaCAN3 – naprawa korelacji wartości
-✔ currentWindow() dodane
-✔ main.cpp naprawiony
+🎨 MagistralaCAN3 – filtrowanie i kolorowanie ramek
+✔ Przykładowy skrypt scripts/filter_example.lua
+✔ data() rozszerzone
+✔ CanFrameModel rozszerzony
+✔ API Lua rozszerzone
 -- Configuring done (0.1s)
 -- Generating done (0.0s)
 -- Build files have been written to: /home/nz2xzhkzfeewkgbu/MagistralaCAN3/build
 [  0%] Built target MagistralaCAN3_autogen_timestamp_deps
 [  5%] Automatic MOC for target MagistralaCAN3
 [  5%] Built target MagistralaCAN3_autogen
-[ 11%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/byte_correlation_view.cpp.o
-[ 17%] Building CXX object CMakeFiles/MagistralaCAN3.dir/MagistralaCAN3_autogen/mocs_compilation.cpp.o
-[ 23%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/candidate_list_view.cpp.o
-[ 29%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o
-[ 35%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/ml/assoc_learner.cpp.o
-[ 41%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/ml/value_assoc_learner.cpp.o
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.h:4,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/build/MagistralaCAN3_autogen/MXUWEOXILK/../../../src/gui/byte_correlation_view.h:6,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/build/MagistralaCAN3_autogen/MXUWEOXILK/moc_byte_correlation_view.cpp:9,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/build/MagistralaCAN3_autogen/mocs_compilation.cpp:3:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.h:4,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.cpp:1:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.cpp: In member function ‘void ValueAssocLearner::addValueSample(double)’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.cpp:10:13: error: request for member ‘isEmpty’ in ‘win’, which is of non-class type ‘int’
-   10 |     if (win.isEmpty()) return;
-      |             ^~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.cpp:14:27: error: ‘begin’ was not declared in this scope; did you mean ‘std::begin’?
-   14 |     for (const auto &tf : win) {
-      |                           ^~~
-      |                           std::begin
-In file included from /usr/include/c++/15/unordered_map:44,
-                 from /usr/include/c++/15/functional:65,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/qcomparehelpers.h:28,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/qcompare.h:639,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/qnamespace.h:13,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/qobjectdefs.h:12,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/qobject.h:10,
+[ 11%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/lua/lua_engine.cpp.o
+[ 16%] Building CXX object CMakeFiles/MagistralaCAN3.dir/MagistralaCAN3_autogen/mocs_compilation.cpp.o
+[ 22%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/can_frame_model.cpp.o
+[ 27%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/throttled_frame_model.cpp.o
+[ 33%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o
+In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:1:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:25:19: error: ‘CanFrameModel’ has not been declared; did you mean ‘CanFrame’?
+   25 |     void setModel(CanFrameModel *model);
+      |                   ^~~~~~~~~~~~~
+      |                   CanFrame
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:44:5: error: ‘CanFrameModel’ does not name a type; did you mean ‘CanFrame’?
+   44 |     CanFrameModel *model_ = nullptr;
+      |     ^~~~~~~~~~~~~
+      |     CanFrame
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:6: error: variable or field ‘setModel’ declared void
+  120 | void LuaEngine::setModel(CanFrameModel *model) {
+      |      ^~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:26: error: ‘CanFrameModel’ was not declared in this scope; did you mean ‘CanFrame’?
+  120 | void LuaEngine::setModel(CanFrameModel *model) {
+      |                          ^~~~~~~~~~~~~
+      |                          CanFrame
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:41: error: ‘model’ was not declared in this scope; did you mean ‘modfl’?
+  120 | void LuaEngine::setModel(CanFrameModel *model) {
+      |                                         ^~~~~
+      |                                         modfl
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp: In member function ‘void LuaEngine::setColorForId(uint32_t, int, int, int)’:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:125:9: error: ‘model_’ was not declared in this scope; did you mean ‘modfl’?
+  125 |     if (model_) {
+      |         ^~~~~~
+      |         modfl
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:126:49: error: invalid use of incomplete type ‘class QColor’
+  126 |         model_->setColorForId(id, QColor(r, g, b));
+      |                                                 ^
+In file included from /usr/include/x86_64-linux-gnu/qt6/QtCore/qobject.h:18,
                  from /usr/include/x86_64-linux-gnu/qt6/QtCore/QObject:1,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:4:
-/usr/include/c++/15/bits/range_access.h:120:37: note: ‘std::begin’ declared here
-  120 |   template<typename _Tp> const _Tp* begin(const valarray<_Tp>&) noexcept;
-      |                                     ^~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.cpp:14:27: error: ‘end’ was not declared in this scope; did you mean ‘std::end’?
-   14 |     for (const auto &tf : win) {
-      |                           ^~~
-      |                           std::end
-/usr/include/c++/15/bits/range_access.h:122:37: note: ‘std::end’ declared here
-  122 |   template<typename _Tp> const _Tp* end(const valarray<_Tp>&) noexcept;
-      |                                     ^~~
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.cpp:1:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:239: CMakeFiles/MagistralaCAN3.dir/src/ml/value_assoc_learner.cpp.o] Błąd 1
+                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:4:
+/usr/include/x86_64-linux-gnu/qt6/QtCore/qmetatype.h:1550:1: note: forward declaration of ‘class QColor’
+ 1550 | QT_FOR_EACH_STATIC_GUI_CLASS(QT_FORWARD_DECLARE_STATIC_TYPES_ITER)
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp: In member function ‘void LuaEngine::hideId(uint32_t)’:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:131:9: error: ‘model_’ was not declared in this scope; did you mean ‘modfl’?
+  131 |     if (model_) {
+      |         ^~~~~~
+      |         modfl
+make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:281: CMakeFiles/MagistralaCAN3.dir/src/lua/lua_engine.cpp.o] Błąd 1
 make[2]: *** Oczekiwanie na niezakończone zadania....
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:225: CMakeFiles/MagistralaCAN3.dir/src/ml/assoc_learner.cpp.o] Błąd 1
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/candidate_list_view.h:7,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/main.cpp:23:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/candidate_list_view.h:7,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/candidate_list_view.cpp:1:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/value_assoc_learner.h:4,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/byte_correlation_view.h:6,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/byte_correlation_view.cpp:1:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:19: error: ‘TimedFrame’ was not declared in this scope
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                   ^~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:29: error: template argument 1 is invalid
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                             ^
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h: In member function ‘const int& AssocLearner::currentWindow() const’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/ml/assoc_learner.h:25:63: error: invalid initialization of reference of type ‘const int&’ from expression of type ‘QVector<AssocLearner::TimedFrame>’ {aka ‘const QList<AssocLearner::TimedFrame>’}
-   25 |     const QVector<TimedFrame>& currentWindow() const { return window_; }
-      |                                                               ^~~~~~~
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:267: CMakeFiles/MagistralaCAN3.dir/src/gui/candidate_list_view.cpp.o] Błąd 1
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:99: CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o] Błąd 1
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:253: CMakeFiles/MagistralaCAN3.dir/src/gui/byte_correlation_view.cpp.o] Błąd 1
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:85: CMakeFiles/MagistralaCAN3.dir/MagistralaCAN3_autogen/mocs_compilation.cpp.o] Błąd 1
 make[1]: *** [CMakeFiles/Makefile2:90: CMakeFiles/MagistralaCAN3.dir/all] Błąd 2
 make: *** [Makefile:91: all] Błąd 2
 

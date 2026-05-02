@@ -125,11 +125,3 @@ QVector<Candidate> AssocLearner::getFilteredCandidates(int topN, double minScore
     }
     return filtered;
 }
-
-void AssocLearner::setWindowSec(double sec) {
-    windowSec_ = sec;
-}
-
-double AssocLearner::windowSec() const {
-    return windowSec_;
-}

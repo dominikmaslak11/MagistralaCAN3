@@ -1,0 +1,30 @@
+Lista elementów interfejsu użytkownika (main.cpp)
+===================================================
+
+[Górny panel sterowania – controlLayout]
+1.  Dodaj kanał        (QPushButton addChannelBtn)
+2.  Usuń kanał         (QPushButton removeChannelBtn)
+3.  Wyczyść            (QPushButton clearBtn)
+4.  Zapisz candump     (QPushButton saveBtn)
+5.  Nadpisywanie       (QCheckBox overwriteCheck)
+6.  Podświetlaj        (QCheckBox highlightCheck)
+7.  Tryb:              (QLabel)
+8.  CAN 2.0 / CAN FD / J1939  (QComboBox modeCombo)
+9.  ** Menu uczenia ** (QComboBox learnModeCombo)
+    a) "Zdarzenie (hamulec)"
+       – Hamulec        (QCheckBox eventCheck)
+       – Powtórzeń:     (QLabel)
+       – cyfry 1..100   (QSpinBox iterSpin)
+       – Iteruj         (QPushButton iterBtn)
+    b) "Wartość (temperatura)"
+       – np. 85.5       (QLineEdit valueEdit)
+       – Dodaj próbkę   (QPushButton addSampleBtn)
+       – Oblicz korelacje (QPushButton computeCorrBtn)
+10. Wczytaj skrypt Lua  (QPushButton loadLuaBtn)
+
+[Główny widok – splitter poziomy]
+1.  Tabela ramek        (QTableView)
+2.  Widok szczegółów    (CanFrameDetailView)
+3.  Lista kandydatów    (CandidateListView)
+4.  Tabela korelacji    (ByteCorrelationView)
+
