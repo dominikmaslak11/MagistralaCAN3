@@ -1,25 +1,3 @@
-#!/bin/bash
-# fix_gateway_relay.sh – MagistralaCAN3: poprawka sygnatury relayFrame
-# Uruchom w katalogu ~/MagistralaCAN3
-
-set -e
-echo "🔧 MagistralaCAN3 – ujednolicenie relayFrame"
-
-if [ ! -f "src/gateway/can_gateway.h" ] || [ ! -f "src/gateway/can_gateway.cpp" ]; then
-    echo "❌ Nie znaleziono plików can_gateway."
-    exit 1
-fi
-
-cp src/gateway/can_gateway.h src/gateway/can_gateway.h.bak_relay_$(date +%Y%m%d_%H%M%S)
-cp src/gateway/can_gateway.cpp src/gateway/can_gateway.cpp.bak_relay_$(date +%Y%m%d_%H%M%S)
-
-# 1. Popraw nagłówek – zmień deklarację relayFrame na 2-argumentową
-# (Usuwamy nieużywany parametr CanFrameModel)
-sed -i 's/void relayFrame(const CanFrame &frame, CanFrameModel \*destModel, CanWorker \*destWorker);/void relayFrame(const CanFrame \&frame, CanWorker \*destWorker);/' src/gateway/can_gateway.h
-echo "✔ Nagłówek poprawiony"
-
-# 2. Nadpisz .cpp poprawną wersją (bez starej 3-argumentowej definicji)
-cat > src/gateway/can_gateway.cpp << 'GWCPP'
 #include "can_gateway.h"
 #include "rule_engine.h"
 #include "gui/can_frame_model.h"
@@ -84,15 +62,3 @@ void CanGateway::relayFrame(const CanFrame &frame, CanWorker *destWorker) {
     // Wyślij fizycznie
     destWorker->sendFrame(modFrame);
 }
-GWCPP
-
-echo "✔ can_gateway.cpp nadpisany"
-
-# Kompilacja
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-echo ""
-echo "✅ Gateway z RuleEngine poprawnie skompilowany."

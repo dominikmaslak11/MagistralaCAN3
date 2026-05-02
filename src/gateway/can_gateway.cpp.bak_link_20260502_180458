@@ -1,0 +1,61 @@
+#include "can_gateway.h"
+#include "gui/can_frame_model.h"
+#include "can/can_worker.h"
+#include <QDebug>
+
+CanGateway::CanGateway(QObject *parent) : QObject(parent) {}
+
+void CanGateway::setModelA(CanFrameModel *model) { modelA_ = model; }
+void CanGateway::setModelB(CanFrameModel *model) { modelB_ = model; }
+void CanGateway::setWorkerA(CanWorker *worker) { workerA_ = worker; }
+void CanGateway::setWorkerB(CanWorker *worker) { workerB_ = worker; }
+void CanGateway::setBidirectional(bool enabled) { bidirectional_ = enabled; }
+void CanGateway::setLuaModifyEnabled(bool enabled) { luaModify_ = enabled; }
+
+void CanGateway::start() {
+    if (running_) return;
+    if (!modelA_ || !modelB_) {
+        emit logMessage("Gateway: brak modeli A/B");
+        return;
+    }
+    connect(modelA_, &CanFrameModel::frameUpdated, this, &CanGateway::onFrameReceivedA);
+    connect(modelB_, &CanFrameModel::frameUpdated, this, &CanGateway::onFrameReceivedB);
+    running_ = true;
+    emit logMessage("Gateway uruchomiony");
+}
+
+void CanGateway::stop() {
+    if (!running_) return;
+    disconnect(modelA_, nullptr, this, nullptr);
+    disconnect(modelB_, nullptr, this, nullptr);
+    running_ = false;
+    emit logMessage("Gateway zatrzymany");
+}
+
+bool CanGateway::isRunning() const { return running_; }
+
+void CanGateway::onFrameReceivedA(int row, const CanFrame &frame, const QVector<int> &changed) {
+    Q_UNUSED(row); Q_UNUSED(changed);
+    if (workerB_) workerB_->sendFrame(frame);
+    if (bidirectional_) {
+        // Ruch A->B; nie przekaźnikuj z powrotem tej samej ramki
+    }
+}
+
+void CanGateway::onFrameReceivedB(int row, const CanFrame &frame, const QVector<int> &changed) {
+    Q_UNUSED(row); Q_UNUSED(changed);
+    if (bidirectional_ && workerA_) {
+        workerA_->sendFrame(frame);
+    }
+}
+
+void CanGateway::relayFrame(const CanFrame &frame, CanFrameModel *destModel, CanWorker *destWorker) {
+    // Nie używane w nowej wersji – ramki są wysyłane bezpośrednio przez worker
+    Q_UNUSED(destModel);
+    if (destWorker) destWorker->sendFrame(frame);
+}
+
+bool CanGateway::isLoopbackFrame(const CanFrame &frame) const {
+    Q_UNUSED(frame);
+    return false;
+}

@@ -99,13 +99,3 @@ void CanWorker::process() {
     }
     adapter_->close();
 }
-
-void CanWorker::sendFrame(const CanFrame &frame) {
-    if (mode_ == CAN20 && adapter_ && adapter_->socketHandle() >= 0) {
-        adapter_->writeFrame(frame);
-    } else if (mode_ == CANFD && fdAdapter_ && fdAdapter_->socketHandle() >= 0) {
-        // fdAdapter_->writeFrame(frame);
-    } else if (mode_ == J1939 && j1939Adapter_ && j1939Adapter_->socketHandle() >= 0) {
-        // j1939Adapter_->writeFrame(frame);
-    }
-}

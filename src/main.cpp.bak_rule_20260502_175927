@@ -22,7 +22,6 @@
 #include <QStackedWidget>
 #include <QSizePolicy>
 #include <QShortcut>
-#include <QPlainTextEdit>
 #include <QTabWidget>
 #include "gui/can_frame_model.h"
 #include "gui/can_frame_detail_view.h"
@@ -34,7 +33,6 @@
 #include "ml/value_assoc_learner.h"
 #include "lua/lua_engine.h"
 #include "gateway/can_gateway.h"
-#include "gateway/rule_engine.h"
 #include "can/can_worker.h"
 
 static QFile logFile;
@@ -62,7 +60,7 @@ int main(int argc, char *argv[])
     debugLog("Aplikacja startuje");
 
     QMainWindow window;
-    window.setWindowTitle("MagistralaCAN3");
+    window.setWindowTitle("MagistralaCAN3 – Sniffer");
     window.resize(1200, 600);
 
     auto *central = new QWidget;
@@ -182,7 +180,6 @@ int main(int argc, char *argv[])
     snifferLayout->addWidget(splitter);
 
     tabWidget->addTab(snifferTab, "Sniffer");
-    window.setCentralWidget(central);
 
     // ========== ZAKŁADKA GATEWAY ==========
     auto *gwTab = new QWidget;
@@ -207,21 +204,15 @@ int main(int argc, char *argv[])
     gwRow2->addWidget(gwBidirCheck);
     gwRow2->addWidget(gwLuaCheck);
     gwLayout->addLayout(gwRow2);
-    auto *ruleEdit = new QPlainTextEdit;
-    ruleEdit->setPlaceholderText("# Reguły:\nif id == 0x123 -> setByte(0, 0xAA)\nif dlc > 4 -> drop()");
-    ruleEdit->setMaximumHeight(100);
-    gwLayout->addWidget(ruleEdit);
-    auto *applyRulesBtn = new QPushButton("Zastosuj reguły");
-    gwLayout->addWidget(applyRulesBtn);
     gwTab->setLayout(gwLayout);
     tabWidget->addTab(gwTab, "Gateway");
 
+    window.setCentralWidget(central);
 
     // Obiekty globalne
     CandumpExporter exporter;
     QMap<QString, CanWorker*> workers;
     CanGateway gateway;
-    RuleEngine ruleEngine;
     AssocLearner learner(2.0);
     ValueAssocLearner valueLearner(2.0);
     LuaEngine luaEngine;
@@ -271,6 +262,8 @@ int main(int argc, char *argv[])
             QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
             QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
             QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            thread->start();
+            workers[ifname] = worker;
             refreshGatewayChannels();   // teraz jest zdefiniowane!
         }
     });
@@ -338,31 +331,11 @@ int main(int argc, char *argv[])
         gateway.setWorkerA(wA); gateway.setWorkerB(wB);
         gateway.setBidirectional(gwBidirCheck->isChecked());
         gateway.setLuaModifyEnabled(gwLuaCheck->isChecked());
-    gateway.setRuleEngine(&ruleEngine);
-        
-        // Podłącz reguły do przetwarzania ramek
-        QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
-            Q_UNUSED(row); Q_UNUSED(c);
-            CanFrame modFrame = f;
-            if (ruleEngine.processFrame(modFrame)) {
-                // ramka przepuszczona (może być zmodyfikowana), Gateway ją przekaże dalej
-            } else {
-                // ramka odrzucona – Gateway jej nie zobaczy, jeśli nie doda?
-                // W obecnej architekturze Gateway reaguje na frameUpdated, więc odrzucona ramka nie powinna być dodawana.
-            }
-        });
         gateway.start();
         gwStartBtn->setEnabled(false); gwStopBtn->setEnabled(true);
         debugLog("Gateway: start " + aName + " <-> " + bName);
     });
-    
-    QObject::connect(applyRulesBtn, &QPushButton::clicked, [&]() {
-        QStringList rules = ruleEdit->toPlainText().split('\n');
-        ruleEngine.loadRules(rules);
-        debugLog("Reguły załadowane: " + QString::number(rules.size()));
-    });
-
-QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
+    QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
         gateway.stop();
         gwStartBtn->setEnabled(true); gwStopBtn->setEnabled(false);
         debugLog("Gateway: zatrzymany");

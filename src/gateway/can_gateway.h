@@ -1,0 +1,57 @@
+#ifndef CAN_GATEWAY_H
+#define CAN_GATEWAY_H
+
+#include <QObject>
+#include <QSet>
+#include <QPair>
+#include "can/can_interface.h"
+
+class CanFrameModel;
+class CanWorker;
+class RuleEngine;
+
+class CanGateway : public QObject {
+    Q_OBJECT
+public:
+    explicit CanGateway(QObject *parent = nullptr);
+
+    void setModelA(CanFrameModel *model);
+    void setModelB(CanFrameModel *model);
+    void setWorkerA(CanWorker *worker);
+    void setWorkerB(CanWorker *worker);
+
+    void setBidirectional(bool enabled);
+    void setLuaModifyEnabled(bool enabled);
+    void setRuleEngine(RuleEngine *engine);
+
+public slots:
+    void start();
+    void stop();
+    bool isRunning() const;
+
+signals:
+    void logMessage(const QString &msg);
+
+private slots:
+    void onFrameReceivedA(int row, const CanFrame &frame, const QVector<int> &changed);
+    void onFrameReceivedB(int row, const CanFrame &frame, const QVector<int> &changed);
+
+private:
+    void relayFrame(const CanFrame &frame, CanWorker *destWorker);
+    bool isLoopbackFrame(const CanFrame &frame) const;
+
+    CanFrameModel *modelA_ = nullptr;
+    CanFrameModel *modelB_ = nullptr;
+    CanWorker *workerA_ = nullptr;
+    CanWorker *workerB_ = nullptr;
+    bool bidirectional_ = true;
+    bool luaModify_ = false;
+    RuleEngine *ruleEngine_ = nullptr;
+    bool running_ = false;
+
+    // Ochrona przed pętlą – ostatnie przekazane ramki
+    static const int maxLoopbackHistory = 100;
+    QSet<QPair<uint32_t, QByteArray>> recentRelayed_;
+};
+
+#endif

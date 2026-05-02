@@ -27,6 +27,11 @@ set(SOURCES
     src/ml/assoc_learner.cpp
     src/ml/value_assoc_learner.cpp
     src/lua/lua_engine.cpp
+    src/gateway/can_gateway.cpp
+    src/gateway/rule_engine.cpp
+    src/flow/flow_block.cpp
+    src/flow/flow_blocks.cpp
+    src/flow/flow_engine.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

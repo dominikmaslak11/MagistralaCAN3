@@ -22,7 +22,6 @@
 #include <QStackedWidget>
 #include <QSizePolicy>
 #include <QShortcut>
-#include <QPlainTextEdit>
 #include <QTabWidget>
 #include "gui/can_frame_model.h"
 #include "gui/can_frame_detail_view.h"
@@ -62,7 +61,7 @@ int main(int argc, char *argv[])
     debugLog("Aplikacja startuje");
 
     QMainWindow window;
-    window.setWindowTitle("MagistralaCAN3");
+    window.setWindowTitle("MagistralaCAN3 – Sniffer");
     window.resize(1200, 600);
 
     auto *central = new QWidget;
@@ -182,7 +181,6 @@ int main(int argc, char *argv[])
     snifferLayout->addWidget(splitter);
 
     tabWidget->addTab(snifferTab, "Sniffer");
-    window.setCentralWidget(central);
 
     // ========== ZAKŁADKA GATEWAY ==========
     auto *gwTab = new QWidget;
@@ -216,6 +214,7 @@ int main(int argc, char *argv[])
     gwTab->setLayout(gwLayout);
     tabWidget->addTab(gwTab, "Gateway");
 
+    window.setCentralWidget(central);
 
     // Obiekty globalne
     CandumpExporter exporter;
@@ -271,6 +270,8 @@ int main(int argc, char *argv[])
             QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
             QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
             QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            thread->start();
+            workers[ifname] = worker;
             refreshGatewayChannels();   // teraz jest zdefiniowane!
         }
     });
@@ -338,7 +339,6 @@ int main(int argc, char *argv[])
         gateway.setWorkerA(wA); gateway.setWorkerB(wB);
         gateway.setBidirectional(gwBidirCheck->isChecked());
         gateway.setLuaModifyEnabled(gwLuaCheck->isChecked());
-    gateway.setRuleEngine(&ruleEngine);
         
         // Podłącz reguły do przetwarzania ramek
         QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {

@@ -18,7 +18,6 @@ public:
     void setInterface(const QString &name);
     void setMode(Mode mode);
     void stop();
-    void sendFrame(const CanFrame &frame);
 
 public slots:
     void process();

@@ -1,0 +1,427 @@
+#include <QApplication>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QTableView>
+#include <QLabel>
+#include <QHeaderView>
+#include <QThread>
+#include <QInputDialog>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QTimer>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QLineEdit>
+#include <QStackedWidget>
+#include <QSizePolicy>
+#include <QShortcut>
+#include "gui/can_frame_model.h"
+#include "gui/can_frame_detail_view.h"
+#include "gui/throttled_frame_model.h"
+#include "gui/candump_exporter.h"
+#include "gui/candidate_list_view.h"
+#include "gui/byte_correlation_view.h"
+#include "ml/assoc_learner.h"
+#include "ml/value_assoc_learner.h"
+#include "lua/lua_engine.h"
+#include "gateway/can_gateway.h"
+#include "can/can_worker.h"
+
+static QFile logFile;
+static QTextStream logStream;
+
+void initLog() {
+    logFile.setFileName("magistrala3.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        logStream.setDevice(&logFile);
+}
+
+void debugLog(const QString &msg) {
+    QString ts = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    if (logFile.isOpen()) {
+        logStream << "[" << ts << "] " << msg << Qt::endl;
+        logStream.flush();
+    }
+    qDebug().noquote() << "[" << ts << "] " << msg;
+}
+
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    initLog();
+    debugLog("Aplikacja startuje");
+
+    QMainWindow window;
+    window.setWindowTitle("MagistralaCAN3 – Sniffer");
+    window.resize(1200, 600);
+
+    auto *central = new QWidget;
+    auto *mainLayout = new QVBoxLayout(central);
+    mainLayout->setContentsMargins(5, 5, 5, 0);
+    mainLayout->setSpacing(4);
+
+    // ------ Panel sterowania ------
+    auto *controlLayout = new QHBoxLayout;
+    controlLayout->setSpacing(4);
+
+    auto makeButton = [](const QString &text) {
+        auto *btn = new QPushButton(text);
+        btn->setMaximumHeight(28);
+        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        return btn;
+    };
+
+    auto *addChannelBtn = makeButton("Dodaj kanał");
+    auto *removeChannelBtn = makeButton("Usuń kanał");
+    auto *clearBtn = makeButton("Wyczyść");
+    auto *saveBtn = makeButton("Zapisz candump");
+
+    auto *overwriteCheck = new QCheckBox("Nadpisywanie");
+    overwriteCheck->setMaximumHeight(28);
+    auto *highlightCheck = new QCheckBox("Podświetlaj");
+    highlightCheck->setChecked(true);
+    highlightCheck->setMaximumHeight(28);
+
+    auto *modeCombo = new QComboBox;
+    modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
+    modeCombo->setMaximumHeight(28);
+
+    // Strojenie
+    auto *tuningWidget = new QWidget;
+    auto *tuningLayout = new QHBoxLayout(tuningWidget);
+    tuningLayout->setContentsMargins(0,0,0,0);
+    auto *windowSpin = new QDoubleSpinBox;
+    windowSpin->setRange(0.5, 10.0);
+    windowSpin->setValue(2.0);
+    windowSpin->setSingleStep(0.5);
+    windowSpin->setMaximumHeight(28);
+    windowSpin->setPrefix("Okno: ");
+    auto *thresholdSpin = new QDoubleSpinBox;
+    thresholdSpin->setRange(0.0, 1.0);
+    thresholdSpin->setValue(0.1);
+    thresholdSpin->setSingleStep(0.05);
+    thresholdSpin->setMaximumHeight(28);
+    thresholdSpin->setPrefix("Próg: ");
+    tuningLayout->addWidget(windowSpin);
+    tuningLayout->addWidget(thresholdSpin);
+    tuningWidget->setLayout(tuningLayout);
+
+    // Uczenie
+    auto *learnModeCombo = new QComboBox;
+    learnModeCombo->addItems({"Zdarzenie (hamulec)", "Wartość (temperatura)"});
+    learnModeCombo->setMaximumHeight(28);
+    auto *learnStack = new QStackedWidget;
+    learnStack->setMaximumHeight(32);
+
+    auto *eventPanel = new QWidget;
+    auto *eventLayout = new QHBoxLayout(eventPanel);
+    eventLayout->setContentsMargins(0,0,0,0);
+    auto *eventCheck = new QCheckBox("Hamulec");
+    eventCheck->setMaximumHeight(28);
+    auto *iterSpin = new QSpinBox;
+    iterSpin->setRange(1, 100); iterSpin->setValue(1);
+    iterSpin->setMaximumHeight(28);
+    auto *iterBtn = makeButton("Iteruj");
+    eventLayout->addWidget(eventCheck);
+    eventLayout->addWidget(new QLabel("Powtórzeń:"));
+    eventLayout->addWidget(iterSpin);
+    eventLayout->addWidget(iterBtn);
+    learnStack->addWidget(eventPanel);
+
+    auto *valPanel = new QWidget;
+    auto *valLayout = new QHBoxLayout(valPanel);
+    valLayout->setContentsMargins(0,0,0,0);
+    auto *valueEdit = new QLineEdit;
+    valueEdit->setPlaceholderText("np. 85.5");
+    valueEdit->setMaximumHeight(28);
+    auto *addSampleBtn = makeButton("Dodaj próbkę");
+    auto *computeCorrBtn = makeButton("Oblicz korelacje");
+    valLayout->addWidget(valueEdit);
+    valLayout->addWidget(addSampleBtn);
+    valLayout->addWidget(computeCorrBtn);
+    learnStack->addWidget(valPanel);
+
+    auto *loadLuaBtn = makeButton("Wczytaj Lua");
+
+    controlLayout->addWidget(addChannelBtn);
+    controlLayout->addWidget(removeChannelBtn);
+    controlLayout->addWidget(clearBtn);
+    controlLayout->addWidget(saveBtn);
+    controlLayout->addWidget(overwriteCheck);
+    controlLayout->addWidget(highlightCheck);
+    controlLayout->addWidget(new QLabel("Tryb:"));
+    controlLayout->addWidget(modeCombo);
+    controlLayout->addWidget(learnModeCombo);
+    controlLayout->addWidget(learnStack);
+    controlLayout->addWidget(tuningWidget);
+    controlLayout->addWidget(loadLuaBtn);
+    mainLayout->addLayout(controlLayout);
+
+    // ------ Główny obszar ------
+    auto *splitter = new QSplitter(Qt::Horizontal);
+    auto *model = new CanFrameModel;
+    auto *tableView = new QTableView;
+    tableView->setModel(model);
+    tableView->horizontalHeader()->setStretchLastSection(true);
+    splitter->addWidget(tableView);
+
+    auto *detailView = new CanFrameDetailView;
+    splitter->addWidget(detailView);
+
+    // Panel boczny z rozwijanym menu
+    auto *sidePanel = new QWidget;
+    auto *sideLayout = new QVBoxLayout(sidePanel);
+    auto *sideCombo = new QComboBox;
+    sideCombo->addItems({"Kandydaci asocjacji", "Korelacje bajtów"});
+    sideCombo->setMaximumHeight(28);
+    auto *sideStack = new QStackedWidget;
+    auto *candidateListView = new CandidateListView;
+    auto *byteCorrView = new ByteCorrelationView;
+    sideStack->addWidget(candidateListView);
+    sideStack->addWidget(byteCorrView);
+    sideLayout->addWidget(sideCombo);
+    sideLayout->addWidget(sideStack);
+    sidePanel->setLayout(sideLayout);
+    splitter->addWidget(sidePanel);
+
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(2, 1);
+    mainLayout->addWidget(splitter);
+    window.setCentralWidget(central);
+
+    // Obiekty
+    CandumpExporter exporter;
+    QMap<QString, CanWorker*> workers;
+    CanGateway gateway;
+    AssocLearner learner(2.0);
+    ValueAssocLearner valueLearner(2.0);
+    LuaEngine luaEngine;
+    luaEngine.setModel(model);
+
+    // ----- Połączenia sygnałów (większość skopiowana z poprzedniej wersji) -----
+    QObject::connect(overwriteCheck, &QCheckBox::toggled, model, &CanFrameModel::setOverwriteMode);
+    QObject::connect(highlightCheck, &QCheckBox::toggled, model, &CanFrameModel::setHighlightEnabled);
+
+    QObject::connect(tableView->selectionModel(), &QItemSelectionModel::currentRowChanged,
+        [model, detailView](const QModelIndex &idx, const QModelIndex &) {
+            if (!idx.isValid()) detailView->clearFrame();
+            else detailView->showFrame(model->frameAt(idx.row()));
+        });
+    QObject::connect(model, &CanFrameModel::frameUpdated,
+        [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
+            if (tableView->selectionModel()->isSelected(model->index(row,0)))
+                detailView->showFrame(f);
+            detailView->highlightChanges(changed);
+        });
+
+    // Eksport
+    QObject::connect(saveBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz ramki", "candump.log", "Candump (*.log *.txt)");
+        if (!path.isEmpty()) {
+            QList<CanFrame> frames;
+            for (int i = 0; i < model->rowCount(); ++i) frames.append(model->frameAt(i));
+            exporter.exportToFile(frames, path, "vcan0");
+        }
+    });
+
+    // Uczenie asocjacyjne
+    QObject::connect(eventCheck, &QCheckBox::toggled, &learner, &AssocLearner::setEventActive);
+
+    QObject::connect(iterBtn, &QPushButton::clicked, [&]() {
+        int n = iterSpin->value();
+        bool active = eventCheck->isChecked();
+        learner.setEventActive(active);
+        learner.performIterations(n, active);
+        learner.setEventActive(false);
+
+        double minScore = thresholdSpin->value();
+        auto candidates = learner.getFilteredCandidates(20, minScore);
+        candidateListView->setCandidates(candidates);
+        QSet<uint32_t> ids;
+        for (const auto &c : candidates) ids.insert(c.id);
+        model->setHighlightedCandidates(ids);
+        debugLog(QString("Iteracja: %1 próbek, %2 kandydatów (próg %3)")
+                 .arg(n).arg(candidates.size()).arg(minScore));
+    });
+
+    // Strojenie okna czasowego (aktualizuj learner)
+    QObject::connect(windowSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), [&learner](double val) {
+        learner.setWindowSec(val);
+    });
+
+    // Wartość
+    QObject::connect(addSampleBtn, &QPushButton::clicked, [&]() {
+        bool ok;
+        double val = valueEdit->text().toDouble(&ok);
+        if (ok) { valueLearner.addValueSample(val); debugLog(QString("Próbka: %1").arg(val)); }
+    });
+    QObject::connect(computeCorrBtn, &QPushButton::clicked, [&]() {
+        auto correlations = valueLearner.computeCorrelations(30);
+        byteCorrView->setCorrelations(correlations);
+    });
+
+    // Lua
+    QObject::connect(loadLuaBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
+        if (!path.isEmpty()) luaEngine.loadScript(path);
+    });
+    QObject::connect(&luaEngine, &LuaEngine::scriptOutput, [](const QString &s) { debugLog("Lua: " + s); });
+    QObject::connect(&luaEngine, &LuaEngine::scriptError, [](const QString &e) { debugLog("Lua ERROR: " + e); });
+    QObject::connect(&luaEngine, &LuaEngine::sendFrameRequested, [&](uint32_t id, const QByteArray &data) {
+        debugLog(QString("Lua: wysyłam 0x%1").arg(id, 3, 16, QChar('0')));
+    });
+
+    // Ramki do uczenia i Lua
+    QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
+        Q_UNUSED(row); Q_UNUSED(c);
+        learner.processFrame(f);
+        valueLearner.processFrame(f);
+        luaEngine.handleFrame(f);
+    });
+
+    // Dodawanie kanału (tożsame z poprzednią wersją)
+    QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
+        QString ifname = QInputDialog::getText(&window, "Nowy kanał", "Nazwa interfejsu:", QLineEdit::Normal, "vcan0");
+        if (!ifname.isEmpty()) {
+            debugLog(QString("Dodawanie kanału: %1").arg(ifname));
+            QThread *thread = new QThread;
+            CanWorker *worker = new CanWorker;
+            worker->setInterface(ifname);
+            QString modeStr = modeCombo->currentText();
+            CanWorker::Mode mode = CanWorker::CAN20;
+            if (modeStr == "CAN FD") mode = CanWorker::CANFD;
+            else if (modeStr == "J1939") mode = CanWorker::J1939;
+            worker->setMode(mode);
+            worker->moveToThread(thread);
+            ThrottledFrameModel *throttler = new ThrottledFrameModel(model);
+            QObject::connect(thread, &QThread::started, worker, &CanWorker::process);
+            QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
+            QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+            QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            thread->start();
+            workers[ifname] = worker;
+            refreshGatewayChannels();
+            thread->start();
+        }
+    });
+    QObject::connect(clearBtn, &QPushButton::clicked, model, &CanFrameModel::clear);
+
+    // Rozwijane menu panelu bocznego
+    QObject::connect(sideCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), sideStack, &QStackedWidget::setCurrentIndex);
+
+    // Przełączanie trybu uczenia
+    QObject::connect(learnModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), learnStack, &QStackedWidget::setCurrentIndex);
+
+    // ----- SKRÓTY KLAWISZOWE -----
+    auto addShortcut = [&](const QKeySequence &key, QPushButton *btn) {
+        QShortcut *sc = new QShortcut(key, &window);
+        QObject::connect(sc, &QShortcut::activated, btn, &QPushButton::click);
+    };
+    auto toggleShortcut = [&](const QKeySequence &key, QCheckBox *cb) {
+        QShortcut *sc = new QShortcut(key, &window);
+        QObject::connect(sc, &QShortcut::activated, cb, &QCheckBox::toggle);
+    };
+
+    addShortcut(QKeySequence("Ctrl+N"), addChannelBtn);
+    addShortcut(QKeySequence("Ctrl+W"), removeChannelBtn);
+    addShortcut(QKeySequence("Ctrl+K"), clearBtn);
+    addShortcut(QKeySequence("Ctrl+S"), saveBtn);
+    toggleShortcut(QKeySequence("Ctrl+O"), overwriteCheck);
+    toggleShortcut(QKeySequence("Ctrl+H"), highlightCheck);
+    toggleShortcut(QKeySequence("Space"), eventCheck);
+    addShortcut(QKeySequence("Ctrl+I"), iterBtn);
+    addShortcut(QKeySequence("Ctrl+D"), addSampleBtn);
+    addShortcut(QKeySequence("Ctrl+B"), computeCorrBtn);
+    addShortcut(QKeySequence("Ctrl+L"), loadLuaBtn);
+
+    // Gateway
+    auto *gwTab = new QWidget;
+    auto *gwLayout = new QVBoxLayout(gwTab);
+    auto *gwRow1 = new QHBoxLayout;
+    auto *gwACombo = new QComboBox;
+    auto *gwBCombo = new QComboBox;
+    gwACombo->setMaximumHeight(28);
+    gwBCombo->setMaximumHeight(28);
+    gwRow1->addWidget(new QLabel("Kanał A:"));
+    gwRow1->addWidget(gwACombo);
+    gwRow1->addWidget(new QLabel("Kanał B:"));
+    gwRow1->addWidget(gwBCombo);
+    gwLayout->addLayout(gwRow1);
+
+    auto *gwRow2 = new QHBoxLayout;
+    auto *gwStartBtn = new QPushButton("Start Gateway");
+    auto *gwStopBtn = new QPushButton("Stop Gateway");
+    gwStopBtn->setEnabled(false);
+    auto *gwBidirCheck = new QCheckBox("Dwukierunkowy");
+    gwBidirCheck->setChecked(true);
+    auto *gwLuaCheck = new QCheckBox("Modyfikuj przez Lua");
+    gwRow2->addWidget(gwStartBtn);
+    gwRow2->addWidget(gwStopBtn);
+    gwRow2->addWidget(gwBidirCheck);
+    gwRow2->addWidget(gwLuaCheck);
+    gwLayout->addLayout(gwRow2);
+    gwTab->setLayout(gwLayout);
+
+    // Dodaj zakładkę Gateway do tabWidget
+    tabWidget->addTab(gwTab, "Gateway");
+
+    // Funkcja odświeżająca listy kanałów
+    auto refreshGatewayChannels = [&]() {
+        QStringList names = workers.keys();
+        gwACombo->clear();
+        gwBCombo->clear();
+        gwACombo->addItems(names);
+        gwBCombo->addItems(names);
+    };
+
+    // Start Gateway
+    QObject::connect(gwStartBtn, &QPushButton::clicked, [&]() {
+        QString aName = gwACombo->currentText();
+        QString bName = gwBCombo->currentText();
+        if (aName.isEmpty() || bName.isEmpty() || aName == bName) {
+            debugLog("Gateway: wybierz dwa różne kanały");
+            return;
+        }
+        CanWorker *wA = workers.value(aName);
+        CanWorker *wB = workers.value(bName);
+        if (!wA || !wB) return;
+
+        gateway.setModelA(model);   // ten sam model – ramki i tak trafią do niego
+        gateway.setModelB(model);
+        gateway.setWorkerA(wA);
+        gateway.setWorkerB(wB);
+        gateway.setBidirectional(gwBidirCheck->isChecked());
+        gateway.setLuaModifyEnabled(gwLuaCheck->isChecked());
+        gateway.start();
+
+        gwStartBtn->setEnabled(false);
+        gwStopBtn->setEnabled(true);
+        debugLog("Gateway: start " + aName + " <-> " + bName);
+    });
+
+    QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
+        gateway.stop();
+        gwStartBtn->setEnabled(true);
+        gwStopBtn->setEnabled(false);
+        debugLog("Gateway: zatrzymany");
+    });
+
+    // Przy dodaniu/usunięciu kanału odświeżamy listy
+    // Zrobimy to przez podpięcie do sygnału – ale najprościej wywołać po każdym dodaniu
+    refreshGatewayChannels(); // inicjalnie
+    // Po każdym dodaniu kanału (w lambdzie addChannelBtn) dodajemy na końcu: refreshGatewayChannels();
+
+    window.show();
+    int ret = app.exec();
+    debugLog("Aplikacja zamknięta");
+    if (logFile.isOpen()) logFile.close();
+    return ret;
+}

@@ -1,61 +1,48 @@
 ┌──(nz2xzhkzfeewkgbu㉿y5enjsya4t4pv4fn)-[~/MagistralaCAN3]
 └─$ ./update.sh
-🎨 MagistralaCAN3 – filtrowanie i kolorowanie ramek
-✔ Przykładowy skrypt scripts/filter_example.lua
-✔ data() rozszerzone
-✔ CanFrameModel rozszerzony
-✔ API Lua rozszerzone
+🔗 MagistralaCAN3 – łączenie Gateway z RuleEngine
+✔ Nagłówek rozszerzony
+✔ CanGateway zintegrowany z RuleEngine
+✔ main.cpp zaktualizowany
 -- Configuring done (0.1s)
 -- Generating done (0.0s)
 -- Build files have been written to: /home/nz2xzhkzfeewkgbu/MagistralaCAN3/build
 [  0%] Built target MagistralaCAN3_autogen_timestamp_deps
-[  5%] Automatic MOC for target MagistralaCAN3
-[  5%] Built target MagistralaCAN3_autogen
-[ 11%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/lua/lua_engine.cpp.o
-[ 16%] Building CXX object CMakeFiles/MagistralaCAN3.dir/MagistralaCAN3_autogen/mocs_compilation.cpp.o
-[ 22%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/can_frame_model.cpp.o
-[ 27%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/throttled_frame_model.cpp.o
-[ 33%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o
-In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:1:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:25:19: error: ‘CanFrameModel’ has not been declared; did you mean ‘CanFrame’?
-   25 |     void setModel(CanFrameModel *model);
-      |                   ^~~~~~~~~~~~~
-      |                   CanFrame
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:44:5: error: ‘CanFrameModel’ does not name a type; did you mean ‘CanFrame’?
-   44 |     CanFrameModel *model_ = nullptr;
-      |     ^~~~~~~~~~~~~
-      |     CanFrame
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:6: error: variable or field ‘setModel’ declared void
-  120 | void LuaEngine::setModel(CanFrameModel *model) {
-      |      ^~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:26: error: ‘CanFrameModel’ was not declared in this scope; did you mean ‘CanFrame’?
-  120 | void LuaEngine::setModel(CanFrameModel *model) {
-      |                          ^~~~~~~~~~~~~
-      |                          CanFrame
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:120:41: error: ‘model’ was not declared in this scope; did you mean ‘modfl’?
-  120 | void LuaEngine::setModel(CanFrameModel *model) {
-      |                                         ^~~~~
-      |                                         modfl
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp: In member function ‘void LuaEngine::setColorForId(uint32_t, int, int, int)’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:125:9: error: ‘model_’ was not declared in this scope; did you mean ‘modfl’?
-  125 |     if (model_) {
-      |         ^~~~~~
-      |         modfl
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:126:49: error: invalid use of incomplete type ‘class QColor’
-  126 |         model_->setColorForId(id, QColor(r, g, b));
-      |                                                 ^
-In file included from /usr/include/x86_64-linux-gnu/qt6/QtCore/qobject.h:18,
-                 from /usr/include/x86_64-linux-gnu/qt6/QtCore/QObject:1,
-                 from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.h:4:
-/usr/include/x86_64-linux-gnu/qt6/QtCore/qmetatype.h:1550:1: note: forward declaration of ‘class QColor’
- 1550 | QT_FOR_EACH_STATIC_GUI_CLASS(QT_FORWARD_DECLARE_STATIC_TYPES_ITER)
-      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp: In member function ‘void LuaEngine::hideId(uint32_t)’:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/lua/lua_engine.cpp:131:9: error: ‘model_’ was not declared in this scope; did you mean ‘modfl’?
-  131 |     if (model_) {
-      |         ^~~~~~
-      |         modfl
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:281: CMakeFiles/MagistralaCAN3.dir/src/lua/lua_engine.cpp.o] Błąd 1
+[  4%] Automatic MOC for target MagistralaCAN3
+[  4%] Built target MagistralaCAN3_autogen
+[ 13%] Building CXX object CMakeFiles/MagistralaCAN3.dir/MagistralaCAN3_autogen/mocs_compilation.cpp.o
+[ 13%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gateway/can_gateway.cpp.o
+[ 17%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp: In member function ‘void CanGateway::onFrameReceivedA(int, const CanFrame&, QVector<int>&)’:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:41:15: error: no matching function for call to ‘CanGateway::relayFrame(const CanFrame&, CanWorker*&)’
+   41 |     relayFrame(frame, workerB_);
+      |     ~~~~~~~~~~^~~~~~~~~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:41:15: note: there is 1 candidate
+In file included from /home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:1:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:40:10: note: candidate 1: ‘void CanGateway::relayFrame(const CanFrame&, CanFrameModel*, CanWorker*)’
+   40 |     void relayFrame(const CanFrame &frame, CanFrameModel *destModel, CanWorker *destWorker);
+      |          ^~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:40:10: note: candidate expects 3 arguments, 2 provided
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp: In member function ‘void CanGateway::onFrameReceivedB(int, const CanFrame&, QVector<int>&)’:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:47:19: error: no matching function for call to ‘CanGateway::relayFrame(const CanFrame&, CanWorker*&)’
+   47 |         relayFrame(frame, workerA_);
+      |         ~~~~~~~~~~^~~~~~~~~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:47:19: note: there is 1 candidate
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:40:10: note: candidate 1: ‘void CanGateway::relayFrame(const CanFrame&, CanFrameModel*, CanWorker*)’
+   40 |     void relayFrame(const CanFrame &frame, CanFrameModel *destModel, CanWorker *destWorker);
+      |          ^~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:40:10: note: candidate expects 3 arguments, 2 provided
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp: At global scope:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.cpp:51:6: error: no declaration matches ‘void CanGateway::relayFrame(const CanFrame&, CanWorker*)’
+   51 | void CanGateway::relayFrame(const CanFrame &frame, CanWorker *destWorker) {
+      |      ^~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:40:10: note: candidate is: ‘void CanGateway::relayFrame(const CanFrame&, CanFrameModel*, CanWorker*)’
+   40 |     void relayFrame(const CanFrame &frame, CanFrameModel *destModel, CanWorker *destWorker);
+      |          ^~~~~~~~~~
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gateway/can_gateway.h:13:7: note: ‘class CanGateway’ defined here
+   13 | class CanGateway : public QObject {
+      |       ^~~~~~~~~~
+make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:295: CMakeFiles/MagistralaCAN3.dir/src/gateway/can_gateway.cpp.o] Błąd 1
 make[2]: *** Oczekiwanie na niezakończone zadania....
 make[1]: *** [CMakeFiles/Makefile2:90: CMakeFiles/MagistralaCAN3.dir/all] Błąd 2
 make: *** [Makefile:91: all] Błąd 2
