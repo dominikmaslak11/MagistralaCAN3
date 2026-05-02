@@ -1,0 +1,169 @@
+#include "can_frame_model.h"
+#include <QDateTime>
+#include <QColor>
+#include <algorithm>
+
+CanFrameModel::CanFrameModel(QObject *parent)
+    : QAbstractTableModel(parent) {}
+
+int CanFrameModel::rowCount(const QModelIndex &parent) const {
+    return parent.isValid() ? 0 : frames_.size();
+}
+
+int CanFrameModel::columnCount(const QModelIndex &parent) const {
+    return parent.isValid() ? 0 : 4;
+}
+
+QVariant CanFrameModel::data(const QModelIndex &index, int role) const {
+    if (!index.isValid()) return QVariant();
+    int row = index.row();
+    const CanFrame &f = frames_.at(row);
+
+    if (role == Qt::DisplayRole) {
+        switch (index.column()) {
+        case 0: {
+            qint64 ms = f.timestamp.tv_sec * 1000LL + f.timestamp.tv_usec / 1000;
+            return QDateTime::fromMSecsSinceEpoch(ms).toString("hh:mm:ss.zzz");
+        }
+        case 1: {
+            if (f.id & CAN_EFF_FLAG)
+                return QString("0x%1").arg(f.id & CAN_EFF_MASK, 8, 16, QChar('0'));
+            else
+                return QString("0x%1").arg(f.id & CAN_SFF_MASK, 3, 16, QChar('0'));
+        }
+        case 2: return f.dlc;
+        case 3: {
+            QString hex;
+            for (int i = 0; i < f.dlc; ++i)
+                hex += QString("%1 ").arg(f.data[i], 2, 16, QChar('0'));
+            return hex.trimmed();
+        }
+        }
+    }
+
+    // Kolor tła – tylko jeśli podświetlanie jest włączone
+        // Zielone tło dla kandydatów asocjacji (zawsze widoczne)
+    if (role == Qt::BackgroundRole && highlightedIds_.contains(f.id)) {
+        return QColor(180, 255, 180);
+    }
+    if (role == Qt::BackgroundRole && highlightEnabled_) {
+        if (previousFrames_.contains(row)) {
+            return QColor(255, 200, 140);  // pomarańczowy dla zmienionych
+        }
+    }
+
+    return QVariant();
+}
+
+QVariant CanFrameModel::headerData(int section, Qt::Orientation orientation, int role) const {
+    if (orientation != Qt::Horizontal || role != Qt::DisplayRole) return QVariant();
+    switch (section) {
+    case 0: return "Czas";
+    case 1: return "ID";
+    case 2: return "DLC";
+    case 3: return "Dane";
+    }
+    return QVariant();
+}
+
+void CanFrameModel::setOverwriteMode(bool enable) {
+    overwriteMode_ = enable;
+    if (!enable) {
+        idToRow_.clear();
+        previousFrames_.clear();
+        emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
+    }
+}
+
+bool CanFrameModel::overwriteMode() const {
+    return overwriteMode_;
+}
+
+void CanFrameModel::setHighlightEnabled(bool enable) {
+    highlightEnabled_ = enable;
+    if (!enable) {
+        previousFrames_.clear();
+        // odśwież widok, aby zniknęły kolory
+        emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
+    }
+}
+
+bool CanFrameModel::highlightEnabled() const {
+    return highlightEnabled_;
+}
+
+CanFrame CanFrameModel::frameAt(int row) const {
+    if (row >= 0 && row < frames_.size())
+        return frames_.at(row);
+    return CanFrame{};
+}
+
+void CanFrameModel::addFrame(const CanFrame &frame) {
+    QVector<int> changedBytes;
+
+    if (overwriteMode_) {
+        int row = findRowById(frame.id);
+        if (row >= 0) {
+            CanFrame oldFrame = frames_.at(row);
+            for (int i = 0; i < std::min(oldFrame.dlc, frame.dlc); ++i) {
+                if (oldFrame.data[i] != frame.data[i])
+                    changedBytes.append(i);
+            }
+            if (oldFrame.dlc != frame.dlc) {
+                for (int i = std::min(oldFrame.dlc, frame.dlc); i < 8; ++i)
+                    changedBytes.append(i);
+            }
+            frames_[row] = frame;
+            if (highlightEnabled_) {
+                previousFrames_[row] = oldFrame;   // zapamiętaj tylko gdy podświetlanie włączone
+            }
+            emit dataChanged(index(row, 0), index(row, columnCount()-1));
+            emit frameUpdated(row, frame, changedBytes);
+            return;
+        }
+    }
+
+    // Nowy wiersz
+    if (frames_.size() >= maxFrames) {
+        beginRemoveRows(QModelIndex(), 0, 0);
+        canid_t removedId = frames_.first().id;
+        frames_.removeFirst();
+        idToRow_.remove(removedId);
+        for (auto it = idToRow_.begin(); it != idToRow_.end(); ++it)
+            it.value()--;
+        QMap<int, CanFrame> newPrev;
+        for (auto it = previousFrames_.begin(); it != previousFrames_.end(); ++it) {
+            int newRow = it.key() - 1;
+            if (newRow >= 0) newPrev[newRow] = it.value();
+        }
+        previousFrames_ = newPrev;
+        endRemoveRows();
+    }
+
+    int newRow = frames_.size();
+    beginInsertRows(QModelIndex(), newRow, newRow);
+    frames_.append(frame);
+    idToRow_[frame.id] = newRow;
+    endInsertRows();
+
+    previousFrames_.remove(newRow);
+    emit frameUpdated(newRow, frame, QVector<int>());
+}
+
+void CanFrameModel::clear() {
+    beginResetModel();
+    frames_.clear();
+    idToRow_.clear();
+    previousFrames_.clear();
+    endResetModel();
+}
+
+int CanFrameModel::findRowById(canid_t id) const {
+    auto it = idToRow_.constFind(id);
+    return (it != idToRow_.cend()) ? it.value() : -1;
+}
+
+void CanFrameModel::setHighlightedCandidates(const QSet<uint32_t> &ids) {
+    highlightedIds_ = ids;
+    emit dataChanged(index(0,0), index(rowCount()-1, columnCount()-1), {Qt::BackgroundRole});
+}

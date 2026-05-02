@@ -1,7 +1,7 @@
 #ifndef SOCKETCAN_ADAPTER_H
 #define SOCKETCAN_ADAPTER_H
 
-#include "can_interface.h"
+#include "can/can_interface.h"
 #include <QString>
 
 class SocketCanAdapter : public CanInterface {

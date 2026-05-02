@@ -1,0 +1,107 @@
+#include "assoc_learner.h"
+#include <algorithm>
+#include <cmath>
+#include <sys/time.h>
+
+AssocLearner::AssocLearner(double windowSec, QObject *parent)
+    : QObject(parent), windowSec_(windowSec) {}
+
+void AssocLearner::processFrame(const CanFrame &frame) {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    double now = tv.tv_sec + tv.tv_usec / 1e6;
+
+    window_.append({frame, now});
+
+    while (!window_.isEmpty() && (now - window_.first().ts) > windowSec_) {
+        flushWindow();
+        window_.removeFirst();
+    }
+}
+
+void AssocLearner::setEventActive(bool active) {
+    if (eventActive_ != active) {
+        flushWindow();
+        eventActive_ = active;
+    }
+}
+
+void AssocLearner::reset() {
+    window_.clear();
+    eventCounts_.clear();
+    totalCounts_.clear();
+    totalEventWindows_ = 0;
+    totalBgWindows_ = 0;
+    currentCandidates_.clear();
+    emit candidatesUpdated();
+}
+
+QVector<Candidate> AssocLearner::getCandidates(int topN) const {
+    QVector<Candidate> out;
+    for (auto it = eventCounts_.begin(); it != eventCounts_.end(); ++it) {
+        uint32_t id = it.key();
+        int ev = it.value();
+        int tot = totalCounts_.value(id, 0);
+        if (tot == 0) continue;
+
+        double pe = double(ev) / qMax(1, totalEventWindows_);
+        double pb = double(tot - ev) / qMax(1, totalBgWindows_);
+        double score = std::log(pe + 0.01) - std::log(pb + 0.01);
+
+        Candidate c;
+        c.id = id;
+        c.score = score;
+        c.eventCount = ev;
+        c.totalCount = tot;
+        out.append(c);
+    }
+    std::sort(out.begin(), out.end(), [](const Candidate &a, const Candidate &b) {
+        return a.score > b.score;
+    });
+    if (topN > 0 && topN < out.size()) out.resize(topN);
+    return out;
+}
+
+QSet<uint32_t> AssocLearner::candidateIds() const {
+    return currentCandidates_;
+}
+
+QVector<uint32_t> AssocLearner::currentWindowIds() const {
+    QVector<uint32_t> ids;
+    for (const auto &tf : window_) {
+        ids.append(tf.frame.id);
+    }
+    return ids;
+}
+
+QByteArray AssocLearner::lastDataForId(uint32_t id) const {
+    for (int i = window_.size() - 1; i >= 0; --i) {
+        if (window_.at(i).frame.id == id) {
+            const CanFrame &f = window_.at(i).frame;
+            return QByteArray(reinterpret_cast<const char*>(f.data), f.dlc);
+        }
+    }
+    return QByteArray();
+}
+
+void AssocLearner::flushWindow() {
+    if (window_.isEmpty()) return;
+
+    QSet<uint32_t> ids;
+    for (const auto &tf : window_) ids.insert(tf.frame.id);
+
+    if (eventActive_) {
+        totalEventWindows_++;
+        for (uint32_t id : ids) {
+            eventCounts_[id]++;
+            totalCounts_[id]++;
+        }
+    } else {
+        totalBgWindows_++;
+        for (uint32_t id : ids) {
+            totalCounts_[id]++;
+        }
+    }
+    currentCandidates_ = ids;
+    emit candidatesUpdated();
+}

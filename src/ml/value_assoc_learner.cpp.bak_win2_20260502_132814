@@ -1,0 +1,72 @@
+#include "value_assoc_learner.h"
+#include <algorithm>
+#include <cmath>
+
+ValueAssocLearner::ValueAssocLearner(double windowSec, QObject *parent)
+    : AssocLearner(windowSec, parent) {}
+
+void ValueAssocLearner::addValueSample(double value) {
+    auto win = currentWindow();
+    if (win.isEmpty()) return;
+
+    Sample s;
+    s.value = value;
+    for (const auto &tf : win) {
+        const CanFrame &f = tf.frame;
+        QByteArray arr(reinterpret_cast<const char*>(f.data), f.dlc);
+        arr.resize(8, '\0');
+        s.frames[f.id] = arr;
+    }
+    samples_.append(s);
+}
+
+QVector<ByteCorrelation> ValueAssocLearner::computeCorrelations(int topN) const {
+    QVector<ByteCorrelation> result;
+    if (samples_.size() < 3) return result;
+
+    QMap<QPair<uint32_t,int>, QVector<QPair<double,uint8_t>>> data;
+    for (const auto &s : samples_) {
+        for (auto it = s.frames.begin(); it != s.frames.end(); ++it) {
+            uint32_t id = it.key();
+            const QByteArray &arr = it.value();
+            for (int i = 0; i < arr.size() && i < 8; ++i) {
+                data[{id, i}].append({s.value, (uint8_t)arr[i]});
+            }
+        }
+    }
+
+    for (auto it = data.begin(); it != data.end(); ++it) {
+        const auto &pairs = it.value();
+        if (pairs.size() < 3) continue;
+
+        int n = pairs.size();
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (const auto &p : pairs) {
+            double x = p.first, y = p.second;
+            sumX += x; sumY += y; sumXY += x*y;
+            sumX2 += x*x; sumY2 += y*y;
+        }
+        double denom = sqrt((n*sumX2 - sumX*sumX) * (n*sumY2 - sumY*sumY));
+        if (denom < 1e-9) continue;
+        double r = (n*sumXY - sumX*sumY) / denom;
+        if (std::isnan(r)) continue;
+
+        ByteCorrelation bc;
+        bc.id = it.key().first;
+        bc.byteIndex = it.key().second;
+        bc.correlation = fabs(r);
+        bc.samples = n;
+        result.append(bc);
+    }
+
+    std::sort(result.begin(), result.end(), [](const ByteCorrelation &a, const ByteCorrelation &b) {
+        return a.correlation > b.correlation;
+    });
+    if (topN > 0 && result.size() > topN) result.resize(topN);
+    return result;
+}
+
+void ValueAssocLearner::resetAll() {
+    reset();
+    samples_.clear();
+}

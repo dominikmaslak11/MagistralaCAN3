@@ -1,0 +1,41 @@
+[12:32:18.910] Aplikacja startuje
+[12:32:21.939] Dodawanie kanału: vcan0
+[12:32:21.939] Wątek uruchomiony dla vcan0
+[12:32:22.444] Odebrano pierwszy batch ramek (liczba: 1000)
+[12:32:22.444]   Ramka: ID=0x166, DLC=4
+[12:32:22.444]   Ramka: ID=0x158, DLC=8
+[12:32:22.444]   Ramka: ID=0x161, DLC=8
+[12:32:39.899] Aplikacja zamknięta
+[12:34:16.294] Aplikacja startuje
+[12:34:20.065] Aplikacja zamknięta
+[12:36:08.268] Aplikacja startuje
+[12:36:19.045] Dodawanie kanału: vcan0
+[12:36:19.045] Wątek uruchomiony dla vcan0
+[12:36:19.553] Odebrano pierwszy batch ramek (liczba: 1000)
+[12:36:19.553]   Ramka: ID=0x158, DLC=8
+[12:36:19.553]   Ramka: ID=0x161, DLC=8
+[12:36:19.553]   Ramka: ID=0x191, DLC=7
+[12:37:34.033] Aplikacja zamknięta
+[12:39:59.418] Aplikacja startuje
+[12:40:01.879] Dodawanie kanału: vcan0
+[12:40:01.879] Wątek uruchomiony dla vcan0
+[12:40:02.387] Odebrano pierwszy batch ramek (liczba: 1000)
+[12:40:02.387]   Ramka: ID=0x1a4, DLC=8
+[12:40:02.387]   Ramka: ID=0x1aa, DLC=8
+[12:40:02.387]   Ramka: ID=0x1b0, DLC=7
+[12:40:20.056] Aplikacja zamknięta
+[12:47:27.964] Aplikacja startuje
+[12:47:49.017] Dodawanie kanału: vcan0
+[13:00:23.029] Aplikacja zamknięta
+[13:30:45.850] Aplikacja startuje
+[13:31:25.668] Dodawanie kanału: vcan0
+[13:32:28.416] Aplikacja zamknięta
+[13:32:47.894] Aplikacja startuje
+[13:36:16.757] Aplikacja zamknięta
+[13:37:01.237] Aplikacja startuje
+[13:37:33.859] Dodawanie kanału: vcan0
+[13:38:24.420] Iteracja: wykonano 11 próbek, znaleziono 0 kandydatów
+[13:38:27.984] Iteracja: wykonano 11 próbek, znaleziono 0 kandydatów
+[13:38:33.186] Iteracja: wykonano 11 próbek, znaleziono 0 kandydatów
+[13:39:03.935] Obliczono korelacje, znaleziono 0
+[13:40:03.785] Aplikacja zamknięta

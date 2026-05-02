@@ -15,7 +15,6 @@
 #include <QTextStream>
 #include <QDateTime>
 #include <QFileDialog>
-#include <QSpinBox>
 #include <QTimer>
 #include "gui/can_frame_model.h"
 #include "gui/can_frame_detail_view.h"
@@ -69,11 +68,7 @@ int main(int argc, char *argv[])
     auto *highlightCheck = new QCheckBox("Podświetlaj zmiany");
     highlightCheck->setChecked(true);
     auto *eventCheck = new QCheckBox("Zdarzenie");
-    auto *iterSpin = new QSpinBox;
-    iterSpin->setRange(1, 100);
-    iterSpin->setValue(1);
-    auto *iterBtn = new QPushButton("Iteruj");
-    auto *showAllCandidatesBtn = new QPushButton("Pokaż wszystkich");
+    auto *updateCandidatesBtn = new QPushButton("Aktualizuj kandydatów");
     auto *valueEdit = new QLineEdit; valueEdit->setPlaceholderText("Wartość (np. 85.5)");
     auto *addSampleBtn = new QPushButton("Dodaj próbkę");
     auto *computeCorrBtn = new QPushButton("Oblicz korelacje");
@@ -87,10 +82,7 @@ int main(int argc, char *argv[])
     controlLayout->addWidget(overwriteCheck);
     controlLayout->addWidget(highlightCheck);
     controlLayout->addWidget(eventCheck);
-    controlLayout->addWidget(new QLabel("Iteracji:"));
-    controlLayout->addWidget(iterSpin);
-    controlLayout->addWidget(iterBtn);
-    controlLayout->addWidget(showAllCandidatesBtn);
+    controlLayout->addWidget(updateCandidatesBtn);
     controlLayout->addWidget(valueEdit);
     controlLayout->addWidget(addSampleBtn);
     controlLayout->addWidget(computeCorrBtn);
@@ -160,27 +152,12 @@ int main(int argc, char *argv[])
 
     QObject::connect(eventCheck, &QCheckBox::toggled, &learner, &AssocLearner::setEventActive);
 
-    // Przycisk "Iteruj" – wykonuje iteracje z aktywnym zdarzeniem
-    QObject::connect(iterBtn, &QPushButton::clicked, [&]() {
-        int n = iterSpin->value();
-        bool eventActive = eventCheck->isChecked();
-
-        // Wykonaj iteracje
-        learner.setEventActive(eventActive);
-        learner.performIterations(n, eventActive);
-        learner.setEventActive(false);   // powrót do normalnego trybu
-
-        // Pobierz przefiltrowane wyniki (min score 0.1)
-        auto candidates = learner.getFilteredCandidates(20, 0.1);
+    QObject::connect(updateCandidatesBtn, &QPushButton::clicked, [&]() {
+        auto candidates = learner.getCandidates(20);
         candidateListView->setCandidates(candidates);
-
-        // Podświetl tylko istotnych kandydatów
         QSet<uint32_t> ids;
         for (const auto &c : candidates) ids.insert(c.id);
         model->setHighlightedCandidates(ids);
-
-        debugLog(QString("Iteracja: wykonano %1 próbek, znaleziono %2 kandydatów")
-                 .arg(n).arg(candidates.size()));
     });
 
     // Automatyczne odświeżanie listy kandydatów co 2 sekundy

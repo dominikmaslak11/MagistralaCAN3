@@ -13,8 +13,16 @@ set(SOURCES
     src/main.cpp
     src/can/can_worker.cpp
     src/can/socketcan_adapter.cpp
+    src/can/socketcan_fd_adapter.cpp
+    src/can/socketcan_j1939_adapter.cpp
     src/gui/can_frame_model.cpp
     src/gui/throttled_frame_model.cpp
+    src/gui/can_frame_detail_view.cpp
+    src/gui/candump_exporter.cpp
+    src/ml/assoc_learner.cpp
+    src/ml/value_assoc_learner.cpp
+    src/gui/byte_correlation_view.cpp
+    src/gui/candidate_list_view.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

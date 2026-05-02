@@ -1,0 +1,178 @@
+#include <QApplication>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QTableView>
+#include <QLabel>
+#include <QHeaderView>
+#include <QThread>
+#include <QInputDialog>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include "gui/can_frame_model.h"
+#include "gui/can_frame_detail_view.h"
+#include "gui/throttled_frame_model.h"
+#include "can/can_worker.h"
+
+// Prosty logger do pliku
+static QFile logFile;
+static QTextStream logStream;
+
+void initLog() {
+    logFile.setFileName("magistrala3.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        logStream.setDevice(&logFile);
+    }
+}
+
+void debugLog(const QString &msg) {
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    if (logFile.isOpen()) {
+        logStream << "[" << timestamp << "] " << msg << Qt::endl;
+        logStream.flush();
+    }
+    qDebug().noquote() << "[" << timestamp << "] " << msg;
+}
+
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    initLog();
+    debugLog("Aplikacja startuje");
+
+    QMainWindow window;
+    window.setWindowTitle("MagistralaCAN3 – Sniffer");
+    window.resize(1100, 550);
+
+    auto *central = new QWidget;
+    auto *mainLayout = new QVBoxLayout(central);
+
+    auto *controlLayout = new QHBoxLayout;
+    auto *addChannelBtn = new QPushButton("Dodaj kanał");
+    auto *removeChannelBtn = new QPushButton("Usuń kanał");
+    auto *clearBtn = new QPushButton("Wyczyść");
+    auto *overwriteCheck = new QCheckBox("Nadpisywanie");
+    auto *modeCombo = new QComboBox;
+    modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
+    controlLayout->addWidget(addChannelBtn);
+    controlLayout->addWidget(removeChannelBtn);
+    controlLayout->addWidget(clearBtn);
+    controlLayout->addWidget(overwriteCheck);
+    controlLayout->addWidget(new QLabel("Tryb:")); controlLayout->addWidget(modeCombo);
+    mainLayout->addLayout(controlLayout);
+
+    auto *splitter = new QSplitter(Qt::Horizontal);
+    auto *model = new CanFrameModel;
+    auto *tableView = new QTableView;
+    tableView->setModel(model);
+    tableView->horizontalHeader()->setStretchLastSection(true);
+    splitter->addWidget(tableView);
+    auto *detailView = new CanFrameDetailView;
+    splitter->addWidget(detailView);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+    mainLayout->addWidget(splitter);
+    window.setCentralWidget(central);
+
+    QObject::connect(overwriteCheck, &QCheckBox::toggled, model, &CanFrameModel::setOverwriteMode);
+    QObject::connect(tableView->selectionModel(), &QItemSelectionModel::currentRowChanged,
+        [model, detailView](const QModelIndex &idx, const QModelIndex &) {
+            if (!idx.isValid()) detailView->clearFrame();
+            else detailView->showFrame(model->frameAt(idx.row()));
+        });
+    QObject::connect(model, &CanFrameModel::frameUpdated,
+        [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
+            if (tableView->selectionModel()->isSelected(model->index(row,0)))
+                detailView->showFrame(f);
+            detailView->highlightChanges(changed);
+        });
+
+    // ----- DODAWANIE KANAŁU Z LOGOWANIEM -----
+    QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
+        QString ifname = QInputDialog::getText(&window, "Nowy kanał", "Nazwa interfejsu:", QLineEdit::Normal, "vcan0");
+        if (!ifname.isEmpty()) {
+            debugLog(QString("Dodawanie kanału: %1").arg(ifname));
+
+            QThread *thread = new QThread;
+            CanWorker *worker = new CanWorker;
+            worker->setInterface(ifname);
+
+            QString modeStr = modeCombo->currentText();
+            CanWorker::Mode mode = CanWorker::CAN20;
+            if (modeStr == "CAN FD") mode = CanWorker::CANFD;
+            else if (modeStr == "J1939") mode = CanWorker::J1939;
+            worker->setMode(mode);
+            worker->moveToThread(thread);
+
+            ThrottledFrameModel *throttler = new ThrottledFrameModel(model);
+
+            // Logowanie przy starcie wątku
+            QObject::connect(thread, &QThread::started, [ifname]() {
+                debugLog(QString("Wątek uruchomiony dla %1").arg(ifname));
+            });
+
+            QObject::connect(thread, &QThread::started, worker, &CanWorker::process);
+
+            // Logowanie błędów z worker
+            QObject::connect(worker, &CanWorker::errorOccurred, [](const QString &err) {
+                debugLog("BŁĄD CanWorker: " + err);
+            });
+
+            // Logowanie przy odbiorze pierwszych ramek
+            static bool firstBatch = true;
+            QObject::connect(worker, &CanWorker::framesReady, [](const QVector<CanFrame> &frames) {
+                if (firstBatch && !frames.isEmpty()) {
+                    debugLog(QString("Odebrano pierwszy batch ramek (liczba: %1)").arg(frames.size()));
+                    for (int i = 0; i < qMin(3, frames.size()); ++i) {
+                        debugLog(QString("  Ramka: ID=0x%1, DLC=%2").arg(frames[i].id, 3, 16, QChar('0')).arg(frames[i].dlc));
+                    }
+                    firstBatch = false;
+                }
+            });
+
+            QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
+
+            QObject::connect(worker, &CanWorker::fdFramesReady, [](const QVector<CanFdFrame> &fd) {
+                debugLog(QString("Odebrano batch ramek FD (liczba: %1)").arg(fd.size()));
+            });
+            QObject::connect(worker, &CanWorker::fdFramesReady, [model](const QVector<CanFdFrame> &fd) {
+                for (const auto &f : fd) {
+                    CanFrame cf; cf.id = f.id; cf.dlc = (f.dlc>8?8:f.dlc);
+                    memcpy(cf.data, f.data, cf.dlc); cf.timestamp = f.timestamp; model->addFrame(cf);
+                }
+            });
+
+            QObject::connect(worker, &CanWorker::j1939FramesReady, [](const QVector<J1939Frame> &jf) {
+                debugLog(QString("Odebrano batch ramek J1939 (liczba: %1)").arg(jf.size()));
+            });
+            QObject::connect(worker, &CanWorker::j1939FramesReady, [model](const QVector<J1939Frame> &jf) {
+                for (const auto &j : jf) {
+                    CanFrame cf; cf.id = j.pgn & 0x1FFFFF; cf.id |= CAN_EFF_FLAG;
+                    cf.dlc = j.dlc; memcpy(cf.data, j.data, j.dlc);
+                    cf.timestamp = j.timestamp; model->addFrame(cf);
+                }
+            });
+
+            QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+            QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            QObject::connect(thread, &QThread::finished, [ifname]() {
+                debugLog(QString("Wątek zakończony dla %1").arg(ifname));
+            });
+
+            thread->start();
+        }
+    });
+
+    QObject::connect(clearBtn, &QPushButton::clicked, model, &CanFrameModel::clear);
+
+    window.show();
+    int ret = app.exec();
+    debugLog("Aplikacja zamknięta");
+    if (logFile.isOpen()) logFile.close();
+    return ret;
+}

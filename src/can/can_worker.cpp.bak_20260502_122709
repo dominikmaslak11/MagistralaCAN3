@@ -1,0 +1,47 @@
+#include "can_worker.h"
+#include "socketcan_adapter.h"
+#include "socketcan_fd_adapter.h"
+#include "socketcan_j1939_adapter.h"
+#include <QDebug>
+#include <QThread>
+
+CanWorker::CanWorker(QObject *parent) : QObject(parent) {}
+
+CanWorker::~CanWorker() { stop(); }
+
+void CanWorker::setInterface(const QString &name) { ifname_ = name; }
+void CanWorker::setMode(Mode mode) { mode_ = mode; }
+
+void CanWorker::stop() {
+    running_ = false;
+    if (adapter_) { adapter_->close(); delete adapter_; adapter_ = nullptr; }
+    if (fdAdapter_) { fdAdapter_->close(); delete fdAdapter_; fdAdapter_ = nullptr; }
+    if (j1939Adapter_) { j1939Adapter_->close(); delete j1939Adapter_; j1939Adapter_ = nullptr; }
+}
+
+void CanWorker::process() {
+    if (mode_ == CANFD) { /* jak poprzednio */ return; }
+    if (mode_ == J1939) {
+        j1939Adapter_ = new SocketCanJ1939Adapter();
+        if (!j1939Adapter_->open(ifname_, 0x80, true)) {
+            emit errorOccurred(QString("Nie można otworzyć J1939 %1").arg(ifname_));
+            return;
+        }
+        running_ = true;
+        QVector<J1939Frame> batch;
+        while (running_) {
+            J1939Frame frame;
+            if (j1939Adapter_->readFrame(frame)) {
+                batch.append(frame);
+                if (batch.size() >= 1000) {
+                    emit j1939FramesReady(batch);
+                    batch.clear();
+                }
+            } else {
+                QThread::usleep(100);
+                if (!batch.isEmpty()) { emit j1939FramesReady(batch); batch.clear(); }
+            }
+        }
+        j1939Adapter_->close();
+    } else { /* CAN20 */ }
+}
