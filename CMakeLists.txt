@@ -21,12 +21,14 @@ set(SOURCES
     src/gui/can_frame_model.cpp
     src/gui/can_frame_detail_view.cpp
     src/gui/time_series_widget.cpp
+    src/gui/bar_chart_widget.cpp
     src/gui/candump_exporter.cpp
     src/gui/candidate_list_view.cpp
     src/gui/byte_correlation_view.cpp
     src/gui/throttled_frame_model.cpp
     src/ml/assoc_learner.cpp
     src/ml/value_assoc_learner.cpp
+    src/ml/sequence_learner.cpp
     src/lua/lua_engine.cpp
     src/gateway/can_gateway.cpp
     src/gateway/rule_engine.cpp

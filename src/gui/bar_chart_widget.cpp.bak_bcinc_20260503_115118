@@ -1,0 +1,54 @@
+#include "bar_chart_widget.h"
+#include <QVBoxLayout>
+#include <QCPBars.h>
+#include <QCPAxis.h>
+#include <QCPLegend.h>
+#include <QCPAxisTickerText.h>
+
+BarChartWidget::BarChartWidget(QWidget *parent)
+    : QWidget(parent)
+{
+    auto *layout = new QVBoxLayout(this);
+    plot_ = new QCustomPlot;
+    layout->addWidget(plot_);
+    plot_->setInteraction(QCP::iRangeDrag, true);
+    plot_->setInteraction(QCP::iRangeZoom, true);
+    plot_->legend->setVisible(true);
+    plot_->xAxis->setLabel("Kandydaci");
+    plot_->yAxis->setLabel("Score");
+}
+
+void BarChartWidget::setCandidates(const QVector<Candidate> &candidates)
+{
+    plot_->clearPlottables();
+    if (candidates.isEmpty()) {
+        plot_->replot();
+        return;
+    }
+
+    const int maxBars = qMin(10, candidates.size());
+    QCPBars *bars = new QCPBars(plot_->xAxis, plot_->yAxis);
+    bars->setName("Kandydaci");
+    bars->setBrush(QColor(70, 130, 180, 200));
+
+    QVector<double> ticks;
+    QVector<double> values;
+    QVector<QString> labels;
+
+    for (int i = 0; i < maxBars; ++i) {
+        ticks << i + 1;
+        values << candidates[i].score;
+        labels << QString("0x%1").arg(candidates[i].id, 3, 16, QChar('0'));
+    }
+
+    bars->setData(ticks, values);
+
+    QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
+    for (int i = 0; i < maxBars; ++i) {
+        ticker->addTick(i + 1, labels[i]);
+    }
+    plot_->xAxis->setTicker(ticker);
+    plot_->xAxis->setRange(0, maxBars + 1);
+    plot_->yAxis->rescale();
+    plot_->replot();
+}

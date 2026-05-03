@@ -1,0 +1,278 @@
+#include <QApplication>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QTableView>
+#include <QLabel>
+#include <QHeaderView>
+#include <QThread>
+#include <QInputDialog>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFileInfo>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QTimer>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QLineEdit>
+#include <QStackedWidget>
+#include <QSizePolicy>
+#include <QShortcut>
+#include <QMetaObject>
+#include <QPlainTextEdit>
+#include <QTabWidget>
+#include "gui/can_frame_model.h"
+#include "gui/can_frame_detail_view.h"
+#include "gui/throttled_frame_model.h"
+#include "gui/candump_exporter.h"
+#include "gui/candidate_list_view.h"
+#include "gui/byte_correlation_view.h"
+#include "gui/time_series_widget.h"
+#include "ml/assoc_learner.h"
+#include "ml/value_assoc_learner.h"
+#include "ml/sequence_learner.h"
+#include "lua/lua_engine.h"
+#include "gateway/can_gateway.h"
+#include "recorder/session_recorder.h"
+#include "playback/playback_engine.h"
+#include "gateway/rule_engine.h"
+#include "can/can_worker.h"
+
+static QFile logFile;
+static QTextStream logStream;
+
+void initLog() {
+    logFile.setFileName("magistrala3.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        logStream.setDevice(&logFile);
+}
+
+void debugLog(const QString &msg) {
+    QString ts = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    if (logFile.isOpen()) {
+        logStream << "[" << ts << "] " << msg << Qt::endl;
+        logStream.flush();
+    }
+    qDebug().noquote() << "[" << ts << "] " << msg;
+}
+
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    initLog();
+    debugLog("Aplikacja startuje");
+
+    QMainWindow window;
+    window.setWindowTitle("MagistralaCAN3");
+    window.resize(1200, 600);
+
+    auto *central = new QWidget;
+    auto *mainLayout = new QVBoxLayout(central);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
+
+    // ========== TAB WIDGET ==========
+    auto *tabWidget = new QTabWidget;
+    mainLayout->addWidget(tabWidget);
+
+    // ---------- Zakładka Sniffer ----------
+    auto *snifferTab = new QWidget;
+    auto *snifferLayout = new QVBoxLayout(snifferTab);
+    snifferLayout->setContentsMargins(5, 5, 5, 0);
+    snifferLayout->setSpacing(4);
+
+    auto *controlLayout = new QHBoxLayout;
+    controlLayout->setSpacing(4);
+
+    auto makeButton = [](const QString &text) {
+        auto *btn = new QPushButton(text);
+        btn->setMaximumHeight(28);
+        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        return btn;
+    };
+
+    auto *addChannelBtn = makeButton("Dodaj kanał");
+    auto *removeChannelBtn = makeButton("Usuń kanał");
+    auto *clearBtn = makeButton("Wyczyść");
+    auto *saveBtn = makeButton("Zapisz candump");
+
+    auto *overwriteCheck = new QCheckBox("Nadpisywanie");
+    overwriteCheck->setMaximumHeight(28);
+    auto *highlightCheck = new QCheckBox("Podświetlaj");
+    highlightCheck->setChecked(true);
+    highlightCheck->setMaximumHeight(28);
+
+    auto *modeCombo = new QComboBox;
+    modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
+    modeCombo->setMaximumHeight(28);
+
+    auto *channelCombo = new QComboBox;
+    channelCombo->setMaximumHeight(28);
+
+    auto *tuningWidget = new QWidget;
+    auto *tuningLayout = new QHBoxLayout(tuningWidget);
+    tuningLayout->setContentsMargins(0,0,0,0);
+    auto *windowSpin = new QDoubleSpinBox;
+    windowSpin->setRange(0.5, 10.0); windowSpin->setValue(2.0); windowSpin->setSingleStep(0.5);
+    windowSpin->setMaximumHeight(28); windowSpin->setPrefix("Okno: ");
+    auto *thresholdSpin = new QDoubleSpinBox;
+    thresholdSpin->setRange(0.0, 1.0); thresholdSpin->setValue(0.1); thresholdSpin->setSingleStep(0.05);
+    thresholdSpin->setMaximumHeight(28); thresholdSpin->setPrefix("Próg: ");
+    tuningLayout->addWidget(windowSpin);
+    tuningLayout->addWidget(thresholdSpin);
+    auto *saveModelBtn = makeButton("Zapisz model");
+    auto *loadModelBtn = makeButton("Wczytaj model");
+    tuningLayout->addWidget(saveModelBtn);
+    tuningLayout->addWidget(loadModelBtn);
+
+    // Uczenie – połączenia przeniesione do zakładki
+    // Side / Learn combo
+    QObject::connect(sideCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), sideStack, &QStackedWidget::setCurrentIndex);
+    QObject::connect(learnModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), learnStack, &QStackedWidget::setCurrentIndex);
+
+    // Gateway
+    QObject::connect(gwStartBtn, &QPushButton::clicked, [&]() {
+        QString aName = gwACombo->currentText(), bName = gwBCombo->currentText();
+        if (aName.isEmpty() || bName.isEmpty() || aName == bName) { debugLog("Gateway: wybierz dwa różne kanały"); return; }
+        CanWorker *wA = workers.value(aName), *wB = workers.value(bName);
+        if (!wA || !wB) return;
+        gateway.setModelA(model); gateway.setModelB(model);
+        gateway.setWorkerA(wA); gateway.setWorkerB(wB);
+        gateway.setBidirectional(gwBidirCheck->isChecked());
+        gateway.setLuaModifyEnabled(gwLuaCheck->isChecked());
+        gateway.setRuleEngine(&ruleEngine);
+        gateway.start();
+        gwStartBtn->setEnabled(false); gwStopBtn->setEnabled(true);
+        debugLog("Gateway: start " + aName + " <-> " + bName);
+    });
+    QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
+        gateway.stop();
+        gwStartBtn->setEnabled(true); gwStopBtn->setEnabled(false);
+        debugLog("Gateway: zatrzymany");
+    });
+    QObject::connect(applyRulesBtn, &QPushButton::clicked, [&]() {
+        QStringList rules = ruleEdit->toPlainText().split('\n');
+        ruleEngine.loadRules(rules);
+        debugLog("Reguły załadowane: " + QString::number(rules.size()));
+    });
+
+    // Menu narzędzi
+    QObject::connect(toolExecBtn, &QPushButton::clicked, [&]() {
+        int idx = toolCombo->currentIndex();
+        switch (idx) {
+        case 0: { // Wczytaj Lua
+            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
+            if (!path.isEmpty()) luaEngine.loadScript(path);
+            break;
+        }
+        case 1: { // Nagraj
+            QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz sesję", "session.can", "CAN Rec (*.can)");
+            if (!path.isEmpty()) recorder.startRecording(path);
+            break;
+        }
+        case 2: recorder.stopRecording(); break;
+        case 3: { // Odtwórz
+            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz sesję", "", "CAN Rec (*.can)");
+            if (!path.isEmpty() && !workers.isEmpty()) recorder.startPlayback(workers.first());
+            break;
+        }
+        case 4: recorder.stopPlayback(); break;
+        }
+    });
+
+    // Skróty klawiszowe
+    auto addShortcut = [&](const QKeySequence &key, QPushButton *btn) {
+        QShortcut *sc = new QShortcut(key, &window);
+        QObject::connect(sc, &QShortcut::activated, btn, &QPushButton::click);
+    };
+    auto toggleShortcut = [&](const QKeySequence &key, QCheckBox *cb) {
+        QShortcut *sc = new QShortcut(key, &window);
+        QObject::connect(sc, &QShortcut::activated, cb, &QCheckBox::toggle);
+    };
+    addShortcut(QKeySequence("Ctrl+N"), addChannelBtn); addShortcut(QKeySequence("Ctrl+W"), removeChannelBtn);
+    addShortcut(QKeySequence("Ctrl+K"), clearBtn); addShortcut(QKeySequence("Ctrl+S"), saveBtn);
+    toggleShortcut(QKeySequence("Ctrl+O"), overwriteCheck); toggleShortcut(QKeySequence("Ctrl+H"), highlightCheck);
+    toggleShortcut(QKeySequence("Space"), eventCheck); addShortcut(QKeySequence("Ctrl+I"), iterBtn);
+    addShortcut(QKeySequence("Ctrl+D"), addSampleBtn); addShortcut(QKeySequence("Ctrl+B"), computeCorrBtn);
+
+    auto toolShortcut = [&](const QKeySequence &key, int comboIdx) {
+        QShortcut *sc = new QShortcut(key, &window);
+        QObject::connect(sc, &QShortcut::activated, [&, comboIdx]() {
+            toolCombo->setCurrentIndex(comboIdx);
+            toolExecBtn->click();
+        });
+    };
+    toolShortcut(QKeySequence("Ctrl+L"), 0);
+    toolShortcut(QKeySequence("Ctrl+R"), 1);
+    toolShortcut(QKeySequence("Ctrl+Shift+R"), 2);
+    toolShortcut(QKeySequence("Ctrl+P"), 3);
+    toolShortcut(QKeySequence("Ctrl+Shift+P"), 4);
+
+    // Sequence mode
+    QObject::connect(seqModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [&learner](int idx) {
+        learner.setSeqMode(static_cast<SequenceLearner::SeqMode>(idx));
+    });
+    // Weight decay
+    QObject::connect(weightDecayCheck, &QCheckBox::toggled, &learner, &SequenceLearner::setWeightDecay);
+
+    // Zapisz/Wczytaj model
+    QObject::connect(saveModelBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz model", "model.json", "JSON (*.json)");
+        if (!path.isEmpty()) learner.saveModel(path);
+    });
+    QObject::connect(loadModelBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getOpenFileName(nullptr, "Wczytaj model", "", "JSON (*.json)");
+        if (!path.isEmpty()) learner.loadModel(path);
+    });
+
+    refreshChannelCombo();
+    refreshGatewayChannels();
+
+    // Połączenia dla zakładki Uczenie
+    QObject::connect(eventCheck, &QCheckBox::toggled, &learner, &AssocLearner::setEventActive);
+    QObject::connect(iterBtn, &QPushButton::clicked, [&]() {
+        int n = iterSpin->value(); bool active = eventCheck->isChecked();
+        learner.setEventActive(active); learner.performIterations(n, active); learner.setEventActive(false);
+        auto candidates = learner.getFilteredCandidates(20, thresholdSpin->value());
+        candidateListView->setCandidates(candidates);
+        QSet<uint32_t> ids; for (const auto &c : candidates) ids.insert(c.id);
+        // Podświetlanie w snifferze (model główny)
+        model->setHighlightedCandidates(ids);
+        debugLog(QString("Iteracja: %1 próbek, %2 kandydatów").arg(n).arg(candidates.size()));
+    });
+    QObject::connect(windowSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), [&learner](double val) { learner.setWindowSec(val); });
+    QObject::connect(addSampleBtn, &QPushButton::clicked, [&]() {
+        bool ok; double val = valueEdit->text().toDouble(&ok);
+        if (ok) { valueLearner.addValueSample(val); debugLog(QString("Próbka: %1").arg(val)); }
+    });
+    QObject::connect(computeCorrBtn, &QPushButton::clicked, [&]() {
+        byteCorrView->setCorrelations(valueLearner.computeCorrelations(30));
+    });
+    QObject::connect(learnModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), learnStack, &QStackedWidget::setCurrentIndex);
+    QObject::connect(seqModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [&learner](int idx) {
+        learner.setSeqMode(static_cast<SequenceLearner::SeqMode>(idx));
+    });
+    QObject::connect(weightDecayCheck, &QCheckBox::toggled, &learner, &SequenceLearner::setWeightDecay);
+    QObject::connect(saveModelBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz model", "model.json", "JSON (*.json)");
+        if (!path.isEmpty()) learner.saveModel(path);
+    });
+    QObject::connect(loadModelBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getOpenFileName(nullptr, "Wczytaj model", "", "JSON (*.json)");
+        if (!path.isEmpty()) learner.loadModel(path);
+    });
+
+
+    window.show();
+    int ret = app.exec();
+    debugLog("Aplikacja zamknięta");
+    if (logFile.isOpen()) logFile.close();
+    return ret;
+}

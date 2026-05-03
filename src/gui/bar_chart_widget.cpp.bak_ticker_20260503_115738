@@ -1,18 +1,3 @@
-#!/bin/bash
-# fix_bar_chart_ticker.sh – MagistralaCAN3: poprawia BarChartWidget (użycie QCPAxisTickerText)
-# Uruchom w katalogu ~/MagistralaCAN3
-
-set -e
-echo "🔧 MagistralaCAN3 – naprawa osi X wykresu słupkowego (QCPAxisTickerText)"
-
-if [ ! -f "src/gui/bar_chart_widget.cpp" ]; then
-    echo "❌ Nie znaleziono src/gui/bar_chart_widget.cpp"
-    exit 1
-fi
-
-cp src/gui/bar_chart_widget.cpp src/gui/bar_chart_widget.cpp.bak_ticker_$(date +%Y%m%d_%H%M%S)
-
-cat > src/gui/bar_chart_widget.cpp << 'BCWEOF'
 #include "bar_chart_widget.h"
 #include <QVBoxLayout>
 
@@ -25,6 +10,7 @@ BarChartWidget::BarChartWidget(QWidget *parent) : QWidget(parent) {
     plot_->setInteraction(QCP::iRangeZoom, false);
     plot_->xAxis->setLabel("ID");
     plot_->yAxis->setLabel("Score");
+    plot_->xAxis->setTickLabelRotation(60);
     plot_->yAxis->setRange(0, 1);
 }
 
@@ -47,26 +33,13 @@ void BarChartWidget::setCandidates(const QVector<Candidate> &candidates) {
     bars->setData(ticks, values);
     bars->setWidth(0.6);
 
-    // Poprawne ustawienie etykiet osi X za pomocą QCPAxisTickerText
-    QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
-    for (int i = 0; i < labels.size(); ++i) {
-        ticker->addTick(ticks[i], labels[i]);
-    }
-    plot_->xAxis->setTicker(ticker);
-    plot_->xAxis->setRange(0, ticks.size());
+    // Podpisy osi X ręcznie przez QCPAxis
+    QVector<double> tickPos;
+    for (int i = 0; i < labels.size(); ++i) tickPos.append(i + 0.5);
+    plot_->xAxis->setAutoTicks(false);
+    plot_->xAxis->setTickVector(tickPos);
+    plot_->xAxis->setTickVectorLabels(labels);
 
     plot_->rescaleAxes();
     plot_->replot();
 }
-BCWEOF
-
-echo "✔ Plik bar_chart_widget.cpp nadpisany wersją z QCPAxisTickerText."
-
-# Kompilacja
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-echo ""
-echo "✅ MagistralaCAN3 z działającym wykresem słupkowym."

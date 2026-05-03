@@ -1,7 +1,7 @@
 ┌──(nz2xzhkzfeewkgbu㉿y5enjsya4t4pv4fn)-[~/MagistralaCAN3]
 └─$ ./update.sh
-🗑 MagistralaCAN3 – nowa implementacja zarządzania kanałami
-✔ Nowa logika kanałów w main.cpp
+🔧 MagistralaCAN3 – czyszczenie błędnych includów w BarChartWidget
+✔ Plik bar_chart_widget.cpp nadpisany czystą wersją.
 -- Could NOT find Cups (missing: CUPS_LIBRARIES CUPS_INCLUDE_DIR)
 -- Configuring done (0.1s)
 -- Generating done (0.0s)
@@ -9,12 +9,21 @@
 [  0%] Built target MagistralaCAN3_autogen_timestamp_deps
 [  3%] Automatic MOC for target MagistralaCAN3
 [  3%] Built target MagistralaCAN3_autogen
-[  7%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/main.cpp: In lambda function:
-/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/main.cpp:339:5: error: ‘refreshChannelCombo’ was not declared in this scope
-  339 |     refreshChannelCombo();
-      |     ^~~~~~~~~~~~~~~~~~~
-make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:99: CMakeFiles/MagistralaCAN3.dir/src/main.cpp.o] Błąd 1
+[  6%] Building CXX object CMakeFiles/MagistralaCAN3.dir/src/gui/bar_chart_widget.cpp.o
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/bar_chart_widget.cpp: In member function ‘void BarChartWidget::setCandidates(QVector<Candidate>&)’:
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/bar_chart_widget.cpp:39:19: error: ‘class QCPAxis’ has no member named ‘setAutoTicks’; did you mean ‘setSubTicks’?
+   39 |     plot_->xAxis->setAutoTicks(false);
+      |                   ^~~~~~~~~~~~
+      |                   setSubTicks
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/bar_chart_widget.cpp:40:19: error: ‘class QCPAxis’ has no member named ‘setTickVector’; did you mean ‘tickVector’?
+   40 |     plot_->xAxis->setTickVector(tickPos);
+      |                   ^~~~~~~~~~~~~
+      |                   tickVector
+/home/nz2xzhkzfeewkgbu/MagistralaCAN3/src/gui/bar_chart_widget.cpp:41:19: error: ‘class QCPAxis’ has no member named ‘setTickVectorLabels’; did you mean ‘tickVectorLabels’?
+   41 |     plot_->xAxis->setTickVectorLabels(labels);
+      |                   ^~~~~~~~~~~~~~~~~~~
+      |                   tickVectorLabels
+make[2]: *** [CMakeFiles/MagistralaCAN3.dir/build.make:211: CMakeFiles/MagistralaCAN3.dir/src/gui/bar_chart_widget.cpp.o] Błąd 1
 make[1]: *** [CMakeFiles/Makefile2:90: CMakeFiles/MagistralaCAN3.dir/all] Błąd 2
 make: *** [Makefile:91: all] Błąd 2
 

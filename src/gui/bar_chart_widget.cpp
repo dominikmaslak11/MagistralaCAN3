@@ -1,18 +1,3 @@
-#!/bin/bash
-# fix_bar_chart_ticker.sh – MagistralaCAN3: poprawia BarChartWidget (użycie QCPAxisTickerText)
-# Uruchom w katalogu ~/MagistralaCAN3
-
-set -e
-echo "🔧 MagistralaCAN3 – naprawa osi X wykresu słupkowego (QCPAxisTickerText)"
-
-if [ ! -f "src/gui/bar_chart_widget.cpp" ]; then
-    echo "❌ Nie znaleziono src/gui/bar_chart_widget.cpp"
-    exit 1
-fi
-
-cp src/gui/bar_chart_widget.cpp src/gui/bar_chart_widget.cpp.bak_ticker_$(date +%Y%m%d_%H%M%S)
-
-cat > src/gui/bar_chart_widget.cpp << 'BCWEOF'
 #include "bar_chart_widget.h"
 #include <QVBoxLayout>
 
@@ -58,15 +43,3 @@ void BarChartWidget::setCandidates(const QVector<Candidate> &candidates) {
     plot_->rescaleAxes();
     plot_->replot();
 }
-BCWEOF
-
-echo "✔ Plik bar_chart_widget.cpp nadpisany wersją z QCPAxisTickerText."
-
-# Kompilacja
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-echo ""
-echo "✅ MagistralaCAN3 z działającym wykresem słupkowym."

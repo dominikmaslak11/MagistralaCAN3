@@ -35,7 +35,6 @@
 #include "gui/candidate_list_view.h"
 #include "gui/byte_correlation_view.h"
 #include "gui/time_series_widget.h"
-#include "gui/bar_chart_widget.h"
 #include "ml/assoc_learner.h"
 #include "ml/value_assoc_learner.h"
 #include "ml/sequence_learner.h"
@@ -237,8 +236,9 @@ int main(int argc, char *argv[])
     auto *learnSplitter = new QSplitter(Qt::Horizontal);
     auto *learnCandidateListView = new CandidateListView;
     learnSplitter->addWidget(learnCandidateListView);
-    auto *barChart = new BarChartWidget;
-    learnSplitter->addWidget(barChart);
+    auto *chartPlaceholder = new QLabel("Wykres słupkowy (w przygotowaniu)");
+    chartPlaceholder->setAlignment(Qt::AlignCenter);
+    learnSplitter->addWidget(chartPlaceholder);
     learnSplitter->setStretchFactor(0, 1);
     learnSplitter->setStretchFactor(1, 1);
     learnMainLayout->addWidget(learnSplitter);
@@ -430,7 +430,6 @@ int main(int argc, char *argv[])
         learner.setEventActive(active); learner.performIterations(n, active); learner.setEventActive(false);
         auto candidates = learner.getFilteredCandidates(20, thresholdSpin->value());
         learnCandidateListView->setCandidates(candidates);
-        barChart->setCandidates(candidates);
         QSet<uint32_t> ids; for (const auto &c : candidates) ids.insert(c.id);
         model->setHighlightedCandidates(ids);
         debugLog(QString("Iteracja: %1 próbek, %2 kandydatów").arg(n).arg(candidates.size()));

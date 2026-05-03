@@ -20,17 +20,14 @@ class AssocLearner : public QObject {
 public:
     explicit AssocLearner(double windowSec = 2.0, QObject *parent = nullptr);
 
-    virtual void processFrame(const CanFrame &frame);
+    void processFrame(const CanFrame &frame);
     void setEventActive(bool active);
-    virtual void reset();
+    void reset();
     void setWindowSec(double sec);
-    void setWeightDecay(bool enabled);
-    void saveModel(const QString &path) const;
-    void loadModel(const QString &path);
     double windowSec() const;
 
-    virtual QVector<Candidate> getCandidates(int topN = 20) const;
-    virtual QSet<uint32_t> candidateIds() const;
+    QVector<Candidate> getCandidates(int topN = 20) const;
+    QSet<uint32_t> candidateIds() const;
     void performIterations(int n, bool eventActive);
     QVector<Candidate> getFilteredCandidates(int topN = 20, double minScore = 0.1) const;
 
@@ -41,8 +38,8 @@ public:
 signals:
     void candidatesUpdated();
 
-protected:
-    virtual void flushWindow();
+private:
+    void flushWindow();
 
     struct TimedFrame {
         CanFrame frame;
@@ -50,7 +47,6 @@ protected:
     };
 
     double windowSec_;
-    bool weightDecay_ = false;
     bool eventActive_ = false;
     QVector<TimedFrame> window_;
     QMap<uint32_t, int> eventCounts_;

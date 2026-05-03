@@ -2,9 +2,6 @@
 #include <algorithm>
 #include <cmath>
 #include <sys/time.h>
-#include <QFile>
-#include <QJsonObject>
-#include <QJsonDocument>
 
 AssocLearner::AssocLearner(double windowSec, QObject *parent)
     : QObject(parent), windowSec_(windowSec) {}
@@ -135,47 +132,4 @@ void AssocLearner::setWindowSec(double sec) {
 
 double AssocLearner::windowSec() const {
     return windowSec_;
-}
-
-void AssocLearner::setWeightDecay(bool enabled) {
-    weightDecay_ = enabled;
-}
-
-void AssocLearner::saveModel(const QString &path) const {
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-    QJsonObject root;
-    root["totalEventWindows"] = totalEventWindows_;
-    root["totalBgWindows"] = totalBgWindows_;
-    QJsonObject eventObj, totalObj;
-    for (auto it = eventCounts_.begin(); it != eventCounts_.end(); ++it) {
-        eventObj[QString::number(it.key())] = it.value();
-    }
-    for (auto it = totalCounts_.begin(); it != totalCounts_.end(); ++it) {
-        totalObj[QString::number(it.key())] = it.value();
-    }
-    root["eventCounts"] = eventObj;
-    root["totalCounts"] = totalObj;
-    QJsonDocument doc(root);
-    file.write(doc.toJson());
-    file.close();
-}
-
-void AssocLearner::loadModel(const QString &path) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    file.close();
-    if (!doc.isObject()) return;
-    QJsonObject root = doc.object();
-    totalEventWindows_ = root["totalEventWindows"].toInt();
-    totalBgWindows_ = root["totalBgWindows"].toInt();
-    QJsonObject eventObj = root["eventCounts"].toObject();
-    for (auto it = eventObj.begin(); it != eventObj.end(); ++it) {
-        eventCounts_[it.key().toUInt()] = it.value().toInt();
-    }
-    QJsonObject totalObj = root["totalCounts"].toObject();
-    for (auto it = totalObj.begin(); it != totalObj.end(); ++it) {
-        totalCounts_[it.key().toUInt()] = it.value().toInt();
-    }
 }
