@@ -9,9 +9,6 @@
 #include <QHeaderView>
 #include <QThread>
 #include <QInputDialog>
-#include <QDialog>
-#include <QDialogButtonBox>
-#include <QFileInfo>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
@@ -25,7 +22,6 @@
 #include <QStackedWidget>
 #include <QSizePolicy>
 #include <QShortcut>
-#include <QMetaObject>
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include "gui/can_frame_model.h"
@@ -34,13 +30,11 @@
 #include "gui/candump_exporter.h"
 #include "gui/candidate_list_view.h"
 #include "gui/byte_correlation_view.h"
-#include "gui/time_series_widget.h"
 #include "ml/assoc_learner.h"
 #include "ml/value_assoc_learner.h"
 #include "lua/lua_engine.h"
 #include "gateway/can_gateway.h"
 #include "recorder/session_recorder.h"
-#include "playback/playback_engine.h"
 #include "gateway/rule_engine.h"
 #include "can/can_worker.h"
 
@@ -87,6 +81,7 @@ int main(int argc, char *argv[])
     snifferLayout->setContentsMargins(5, 5, 5, 0);
     snifferLayout->setSpacing(4);
 
+    // Panel sterowania (wewnątrz sniffera)
     auto *controlLayout = new QHBoxLayout;
     controlLayout->setSpacing(4);
 
@@ -112,10 +107,7 @@ int main(int argc, char *argv[])
     modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
     modeCombo->setMaximumHeight(28);
 
-    // Lista kanałów (rozwijana) – umieszczona w panelu sterowania
-    auto *channelCombo = new QComboBox;
-    channelCombo->setMaximumHeight(28);
-
+    // Strojenie
     auto *tuningWidget = new QWidget;
     auto *tuningLayout = new QHBoxLayout(tuningWidget);
     tuningLayout->setContentsMargins(0,0,0,0);
@@ -149,21 +141,24 @@ int main(int argc, char *argv[])
     valLayout->addWidget(valueEdit); valLayout->addWidget(addSampleBtn); valLayout->addWidget(computeCorrBtn);
     learnStack->addWidget(valPanel);
 
-    // Kompaktowe menu narzędzi
-    auto *toolCombo = new QComboBox;
-    toolCombo->addItems({"Wczytaj Lua", "Nagraj", "Stop nagr.", "Odtwórz", "Stop odtwarz."});
-    toolCombo->setMaximumHeight(28);
-    auto *toolExecBtn = makeButton("Wykonaj");
+    auto *loadLuaBtn = makeButton("Wczytaj Lua");
 
     controlLayout->addWidget(addChannelBtn); controlLayout->addWidget(removeChannelBtn);
     controlLayout->addWidget(clearBtn); controlLayout->addWidget(saveBtn);
     controlLayout->addWidget(overwriteCheck); controlLayout->addWidget(highlightCheck);
     controlLayout->addWidget(new QLabel("Tryb:")); controlLayout->addWidget(modeCombo);
-    controlLayout->addWidget(new QLabel("Kanał:")); controlLayout->addWidget(channelCombo);
     controlLayout->addWidget(learnModeCombo); controlLayout->addWidget(learnStack);
-    controlLayout->addWidget(tuningWidget);
-    controlLayout->addWidget(toolCombo);
-    controlLayout->addWidget(toolExecBtn);
+    controlLayout->addWidget(tuningWidget); controlLayout->addWidget(loadLuaBtn);
+    auto *recBtn = makeButton("Nagraj");
+    auto *stopRecBtn = makeButton("Stop nagr.");
+    stopRecBtn->setEnabled(false);
+    auto *playBtn = makeButton("Odtwórz");
+    auto *stopPlayBtn = makeButton("Stop odtwarz.");
+    stopPlayBtn->setEnabled(false);
+    controlLayout->addWidget(recBtn);
+    controlLayout->addWidget(stopRecBtn);
+    controlLayout->addWidget(playBtn);
+    controlLayout->addWidget(stopPlayBtn);
     snifferLayout->addLayout(controlLayout);
 
     // Główny widok sniffera: splitter
@@ -180,15 +175,13 @@ int main(int argc, char *argv[])
     auto *sidePanel = new QWidget;
     auto *sideLayout = new QVBoxLayout(sidePanel);
     auto *sideCombo = new QComboBox;
-    sideCombo->addItems({"Kandydaci asocjacji", "Korelacje bajtów", "Wykresy przebiegów"});
+    sideCombo->addItems({"Kandydaci asocjacji", "Korelacje bajtów"});
     sideCombo->setMaximumHeight(28);
     auto *sideStack = new QStackedWidget;
     auto *candidateListView = new CandidateListView;
     auto *byteCorrView = new ByteCorrelationView;
     sideStack->addWidget(candidateListView);
     sideStack->addWidget(byteCorrView);
-    auto *timeSeries = new TimeSeriesWidget;
-    sideStack->addWidget(timeSeries);
     sideLayout->addWidget(sideCombo);
     sideLayout->addWidget(sideStack);
     sidePanel->setLayout(sideLayout);
@@ -225,7 +218,6 @@ int main(int argc, char *argv[])
     gwRow2->addWidget(gwBidirCheck);
     gwRow2->addWidget(gwLuaCheck);
     gwLayout->addLayout(gwRow2);
-
     auto *ruleEdit = new QPlainTextEdit;
     ruleEdit->setPlaceholderText("# Reguły:\nif id == 0x123 -> setByte(0, 0xAA)\nif dlc > 4 -> drop()");
     ruleEdit->setMaximumHeight(100);
@@ -235,23 +227,19 @@ int main(int argc, char *argv[])
     gwTab->setLayout(gwLayout);
     tabWidget->addTab(gwTab, "Gateway");
 
+
     // Obiekty globalne
     CandumpExporter exporter;
     QMap<QString, CanWorker*> workers;
     CanGateway gateway;
     RuleEngine ruleEngine;
     SessionRecorder recorder;
-    PlaybackEngine playbackEngine;
     AssocLearner learner(2.0);
     ValueAssocLearner valueLearner(2.0);
     LuaEngine luaEngine;
     luaEngine.setModel(model);
 
-    auto refreshChannelCombo = [&]() {
-        channelCombo->clear();
-        channelCombo->addItems(workers.keys());
-    };
-
+    // ========== FUNKCJA ODSWIEZANIA GATEWAY (przed użyciem!) ==========
     auto refreshGatewayChannels = [&]() {
         QStringList names = workers.keys();
         gwACombo->clear();
@@ -265,17 +253,9 @@ int main(int argc, char *argv[])
     QObject::connect(highlightCheck, &QCheckBox::toggled, model, &CanFrameModel::setHighlightEnabled);
 
     QObject::connect(tableView->selectionModel(), &QItemSelectionModel::currentRowChanged,
-        [model, detailView, timeSeries](const QModelIndex &idx, const QModelIndex &) {
-            if (!idx.isValid()) {
-                detailView->clearFrame();
-                timeSeries->clearGraphs();
-            } else {
-                CanFrame f = model->frameAt(idx.row());
-                detailView->showFrame(f);
-                timeSeries->setActiveId(f.id);
-                double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
-                timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
-            }
+        [model, detailView](const QModelIndex &idx, const QModelIndex &) {
+            if (!idx.isValid()) detailView->clearFrame();
+            else detailView->showFrame(model->frameAt(idx.row()));
         });
     QObject::connect(model, &CanFrameModel::frameUpdated,
         [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
@@ -286,87 +266,24 @@ int main(int argc, char *argv[])
 
     // Dodawanie kanału
     QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
-        QDialog dialog(&window);
-        dialog.setWindowTitle("Nowy kanał");
-        auto *dlgLayout = new QVBoxLayout(&dialog);
-        auto *dlgEdit = new QLineEdit("vcan0");
-        auto *dlgFileCheck = new QCheckBox("Z pliku (.can)");
-        auto *dlgFileEdit = new QLineEdit;
-        dlgFileEdit->setPlaceholderText("Ścieżka do pliku .can");
-        dlgFileEdit->setEnabled(false);
-        auto *dlgBrowseBtn = new QPushButton("Przeglądaj...");
-        auto *dlgBtnBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-
-        dlgLayout->addWidget(new QLabel("Nazwa interfejsu / pliku:"));
-        dlgLayout->addWidget(dlgEdit);
-        dlgLayout->addWidget(dlgFileCheck);
-        dlgLayout->addWidget(dlgFileEdit);
-        dlgLayout->addWidget(dlgBrowseBtn);
-        dlgLayout->addWidget(dlgBtnBox);
-
-        QObject::connect(dlgFileCheck, &QCheckBox::toggled, [&](bool checked) {
-            dlgFileEdit->setEnabled(checked);
-            dlgBrowseBtn->setEnabled(checked);
-            dlgEdit->setEnabled(!checked);
-        });
-        QObject::connect(dlgBrowseBtn, &QPushButton::clicked, [&]() {
-            QString path = QFileDialog::getOpenFileName(&dialog, "Wybierz plik CAN", "", "CAN Rec (*.can)");
-            if (!path.isEmpty()) dlgFileEdit->setText(path);
-        });
-        QObject::connect(dlgBtnBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        QObject::connect(dlgBtnBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-        if (dialog.exec() == QDialog::Accepted) {
-            if (dlgFileCheck->isChecked()) {
-                // Odtwarzanie z pliku
-                QString path = dlgFileEdit->text();
-                if (path.isEmpty()) { debugLog("Nie wybrano pliku."); return; }
-                if (!playbackEngine.loadFile(path)) return;
-                debugLog(QString("Odtwarzanie offline: %1").arg(path));
-
-                CanWorker *vw = new CanWorker;
-                vw->setMode(CanWorker::CAN20);
-                QString vname = QFileInfo(path).fileName();
-                workers[vname] = vw;
-                refreshChannelCombo();
-                refreshGatewayChannels();
-                playbackEngine.start(vw);
-            } else {
-                // Fizyczny interfejs
-                QString ifname = dlgEdit->text().trimmed();
-                if (ifname.isEmpty()) return;
-                debugLog(QString("Dodawanie kanału: %1").arg(ifname));
-                QThread *thread = new QThread;
-                CanWorker *worker = new CanWorker;
-                worker->setInterface(ifname);
-                QString modeStr = modeCombo->currentText();
-                CanWorker::Mode mode = CanWorker::CAN20;
-                if (modeStr == "CAN FD") mode = CanWorker::CANFD;
-                else if (modeStr == "J1939") mode = CanWorker::J1939;
-                worker->setMode(mode);
-                worker->moveToThread(thread);
-                ThrottledFrameModel *throttler = new ThrottledFrameModel(model);
-                QObject::connect(thread, &QThread::started, worker, &CanWorker::process);
-                QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
-                QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
-                QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-                thread->start();
-                workers[ifname] = worker;
-                refreshChannelCombo();
-                refreshGatewayChannels();
-            }
-        }
-    });
-
-    // Usuwanie kanału
-    QObject::connect(removeChannelBtn, &QPushButton::clicked, [&]() {
-        QString name = channelCombo->currentText();
-        if (!name.isEmpty() && workers.contains(name)) {
-            CanWorker *w = workers.take(name);
-            QMetaObject::invokeMethod(w, "stop", Qt::QueuedConnection);
-            refreshChannelCombo();
-            refreshGatewayChannels();
-            debugLog(QString("Usunięto kanał: %1").arg(name));
+        QString ifname = QInputDialog::getText(&window, "Nowy kanał", "Nazwa interfejsu:", QLineEdit::Normal, "vcan0");
+        if (!ifname.isEmpty()) {
+            debugLog(QString("Dodawanie kanału: %1").arg(ifname));
+            QThread *thread = new QThread;
+            CanWorker *worker = new CanWorker;
+            worker->setInterface(ifname);
+            QString modeStr = modeCombo->currentText();
+            CanWorker::Mode mode = CanWorker::CAN20;
+            if (modeStr == "CAN FD") mode = CanWorker::CANFD;
+            else if (modeStr == "J1939") mode = CanWorker::J1939;
+            worker->setMode(mode);
+            worker->moveToThread(thread);
+            ThrottledFrameModel *throttler = new ThrottledFrameModel(model);
+            QObject::connect(thread, &QThread::started, worker, &CanWorker::process);
+            QObject::connect(worker, &CanWorker::framesReady, throttler, &ThrottledFrameModel::appendFrames);
+            QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+            QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            refreshGatewayChannels();   // teraz jest zdefiniowane!
         }
     });
 
@@ -382,7 +299,7 @@ int main(int argc, char *argv[])
         }
     });
 
-    // Uczenie
+    // Uczenie asocjacyjne
     QObject::connect(eventCheck, &QCheckBox::toggled, &learner, &AssocLearner::setEventActive);
     QObject::connect(iterBtn, &QPushButton::clicked, [&]() {
         int n = iterSpin->value(); bool active = eventCheck->isChecked();
@@ -393,6 +310,7 @@ int main(int argc, char *argv[])
         model->setHighlightedCandidates(ids);
         debugLog(QString("Iteracja: %1 próbek, %2 kandydatów").arg(n).arg(candidates.size()));
     });
+
     QObject::connect(windowSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), [&learner](double val) { learner.setWindowSec(val); });
 
     QObject::connect(addSampleBtn, &QPushButton::clicked, [&]() {
@@ -403,28 +321,26 @@ int main(int argc, char *argv[])
         byteCorrView->setCorrelations(valueLearner.computeCorrelations(30));
     });
 
-    // Lua
+    QObject::connect(loadLuaBtn, &QPushButton::clicked, [&]() {
+        QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
+        if (!path.isEmpty()) luaEngine.loadScript(path);
+    });
     QObject::connect(&luaEngine, &LuaEngine::scriptOutput, [](const QString &s) { debugLog("Lua: " + s); });
     QObject::connect(&luaEngine, &LuaEngine::scriptError, [](const QString &e) { debugLog("Lua ERROR: " + e); });
     QObject::connect(&luaEngine, &LuaEngine::sendFrameRequested, [&](uint32_t id, const QByteArray &data) {
         debugLog(QString("Lua: wysyłam 0x%1").arg(id, 3, 16, QChar('0')));
     });
 
-    QObject::connect(model, &CanFrameModel::frameUpdated, [timeSeries](int row, const CanFrame &f, const QVector<int> &c) {
-        double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
-        timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
-    });
     QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
         Q_UNUSED(row); Q_UNUSED(c);
         learner.processFrame(f); valueLearner.processFrame(f); luaEngine.handleFrame(f);
-        recorder.addFrame(f);
     });
 
-    // Side / Learn combo
+    // Side combo
     QObject::connect(sideCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), sideStack, &QStackedWidget::setCurrentIndex);
     QObject::connect(learnModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), learnStack, &QStackedWidget::setCurrentIndex);
 
-    // Gateway
+    // Gateway – start/stop
     QObject::connect(gwStartBtn, &QPushButton::clicked, [&]() {
         QString aName = gwACombo->currentText(), bName = gwBCombo->currentText();
         if (aName.isEmpty() || bName.isEmpty() || aName == bName) { debugLog("Gateway: wybierz dwa różne kanały"); return; }
@@ -434,44 +350,34 @@ int main(int argc, char *argv[])
         gateway.setWorkerA(wA); gateway.setWorkerB(wB);
         gateway.setBidirectional(gwBidirCheck->isChecked());
         gateway.setLuaModifyEnabled(gwLuaCheck->isChecked());
-        gateway.setRuleEngine(&ruleEngine);
+    gateway.setRuleEngine(&ruleEngine);
+        
+        // Podłącz reguły do przetwarzania ramek
+        QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
+            Q_UNUSED(row); Q_UNUSED(c);
+            CanFrame modFrame = f;
+            if (ruleEngine.processFrame(modFrame)) {
+                // ramka przepuszczona (może być zmodyfikowana), Gateway ją przekaże dalej
+            } else {
+                // ramka odrzucona – Gateway jej nie zobaczy, jeśli nie doda?
+                // W obecnej architekturze Gateway reaguje na frameUpdated, więc odrzucona ramka nie powinna być dodawana.
+            }
+        });
         gateway.start();
         gwStartBtn->setEnabled(false); gwStopBtn->setEnabled(true);
         debugLog("Gateway: start " + aName + " <-> " + bName);
     });
-    QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
-        gateway.stop();
-        gwStartBtn->setEnabled(true); gwStopBtn->setEnabled(false);
-        debugLog("Gateway: zatrzymany");
-    });
+    
     QObject::connect(applyRulesBtn, &QPushButton::clicked, [&]() {
         QStringList rules = ruleEdit->toPlainText().split('\n');
         ruleEngine.loadRules(rules);
         debugLog("Reguły załadowane: " + QString::number(rules.size()));
     });
 
-    // Menu narzędzi
-    QObject::connect(toolExecBtn, &QPushButton::clicked, [&]() {
-        int idx = toolCombo->currentIndex();
-        switch (idx) {
-        case 0: { // Wczytaj Lua
-            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
-            if (!path.isEmpty()) luaEngine.loadScript(path);
-            break;
-        }
-        case 1: { // Nagraj
-            QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz sesję", "session.can", "CAN Rec (*.can)");
-            if (!path.isEmpty()) recorder.startRecording(path);
-            break;
-        }
-        case 2: recorder.stopRecording(); break;
-        case 3: { // Odtwórz
-            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz sesję", "", "CAN Rec (*.can)");
-            if (!path.isEmpty() && !workers.isEmpty()) recorder.startPlayback(workers.first());
-            break;
-        }
-        case 4: recorder.stopPlayback(); break;
-        }
+QObject::connect(gwStopBtn, &QPushButton::clicked, [&]() {
+        gateway.stop();
+        gwStartBtn->setEnabled(true); gwStopBtn->setEnabled(false);
+        debugLog("Gateway: zatrzymany");
     });
 
     // Skróty klawiszowe
@@ -488,23 +394,86 @@ int main(int argc, char *argv[])
     toggleShortcut(QKeySequence("Ctrl+O"), overwriteCheck); toggleShortcut(QKeySequence("Ctrl+H"), highlightCheck);
     toggleShortcut(QKeySequence("Space"), eventCheck); addShortcut(QKeySequence("Ctrl+I"), iterBtn);
     addShortcut(QKeySequence("Ctrl+D"), addSampleBtn); addShortcut(QKeySequence("Ctrl+B"), computeCorrBtn);
+    addShortcut(QKeySequence("Ctrl+L"), loadLuaBtn);
 
-    auto toolShortcut = [&](const QKeySequence &key, int comboIdx) {
-        QShortcut *sc = new QShortcut(key, &window);
-        QObject::connect(sc, &QShortcut::activated, [&, comboIdx]() {
-            toolCombo->setCurrentIndex(comboIdx);
-            toolExecBtn->click();
-        });
-    };
-    toolShortcut(QKeySequence("Ctrl+L"), 0);
-    toolShortcut(QKeySequence("Ctrl+R"), 1);
-    toolShortcut(QKeySequence("Ctrl+Shift+R"), 2);
-    toolShortcut(QKeySequence("Ctrl+P"), 3);
-    toolShortcut(QKeySequence("Ctrl+Shift+P"), 4);
+    refreshGatewayChannels();   // inicjalne wypełnienie
 
-    refreshChannelCombo();
-    refreshGatewayChannels();
+    
+    QObject::connect(stopRecBtn, &QPushButton::clicked, [&]() {
+        recorder.stopRecording();
+        recBtn->setEnabled(true);
+        stopRecBtn->setEnabled(false);
+    });
 
+    
+    QObject::connect(stopPlayBtn, &QPushButton::clicked, [&]() {
+        recorder.stopPlayback();
+        playBtn->setEnabled(true);
+        stopPlayBtn->setEnabled(false);
+    });
+
+    // Ramki do nagrywania
+    QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
+        Q_UNUSED(row); Q_UNUSED(c);
+        recorder.addFrame(f);
+    });
+
+
+
+    // Obsługa rozwijanego menu narzędzi
+    QObject::connect(toolExecBtn, &QPushButton::clicked, [&]() {
+        int idx = toolCombo->currentIndex();
+        switch (idx) {
+        case 0: { // Wczytaj Lua
+            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz skrypt Lua", "", "Lua (*.lua)");
+            if (!path.isEmpty()) luaEngine.loadScript(path);
+            break;
+        }
+        case 1: { // Nagraj
+            QString path = QFileDialog::getSaveFileName(nullptr, "Zapisz sesję", "session.can", "CAN Rec (*.can)");
+            if (!path.isEmpty()) {
+                recorder.startRecording(path);
+                debugLog("Nagrywanie: " + path);
+            }
+            break;
+        }
+        case 2: { // Stop nagr.
+            recorder.stopRecording();
+            break;
+        }
+        case 3: { // Odtwórz
+            QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz sesję", "", "CAN Rec (*.can)");
+            if (!path.isEmpty() && !workers.isEmpty()) {
+                recorder.startPlayback(workers.first());
+                debugLog("Odtwarzanie: " + path);
+            }
+            break;
+        }
+        case 4: { // Stop odtwarz.
+            recorder.stopPlayback();
+            break;
+        }
+        }
+    });
+
+    // Skróty klawiszowe dla narzędzi
+    QShortcut *scLua = new QShortcut(QKeySequence("Ctrl+L"), &window);
+    QObject::connect(scLua, &QShortcut::activated, [&]() { toolCombo->setCurrentIndex(0); toolExecBtn->click(); });
+    QShortcut *scRec = new QShortcut(QKeySequence("Ctrl+R"), &window);
+    QObject::connect(scRec, &QShortcut::activated, [&]() { toolCombo->setCurrentIndex(1); toolExecBtn->click(); });
+    QShortcut *scStopRec = new QShortcut(QKeySequence("Ctrl+Shift+R"), &window);
+    QObject::connect(scStopRec, &QShortcut::activated, [&]() { toolCombo->setCurrentIndex(2); toolExecBtn->click(); });
+    QShortcut *scPlay = new QShortcut(QKeySequence("Ctrl+P"), &window);
+    QObject::connect(scPlay, &QShortcut::activated, [&]() { toolCombo->setCurrentIndex(3); toolExecBtn->click(); });
+    QShortcut *scStopPlay = new QShortcut(QKeySequence("Ctrl+Shift+P"), &window);
+    QObject::connect(scStopPlay, &QShortcut::activated, [&]() { toolCombo->setCurrentIndex(4); toolExecBtn->click(); });
+
+
+    QObject::connect(&luaEngine, &LuaEngine::scriptOutput, [](const QString &s) { debugLog("Lua: " + s); });
+    QObject::connect(&luaEngine, &LuaEngine::scriptError, [](const QString &e) { debugLog("Lua ERROR: " + e); });
+    QObject::connect(&luaEngine, &LuaEngine::sendFrameRequested, [&](uint32_t id, const QByteArray &data) {
+        debugLog(QString("Lua: wysyłam 0x%1").arg(id, 3, 16, QChar('0')));
+    });
     window.show();
     int ret = app.exec();
     debugLog("Aplikacja zamknięta");

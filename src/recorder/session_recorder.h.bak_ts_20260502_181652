@@ -1,0 +1,44 @@
+#ifndef SESSION_RECORDER_H
+#define SESSION_RECORDER_H
+
+#include <QObject>
+#include <QVector>
+#include "can/can_interface.h"
+
+class CanWorker;
+
+class SessionRecorder : public QObject {
+    Q_OBJECT
+public:
+    explicit SessionRecorder(QObject *parent = nullptr);
+
+    void startRecording(const QString &fileName);
+    void stopRecording();
+    bool isRecording() const;
+
+    void startPlayback(CanWorker *worker);
+    void stopPlayback();
+    bool isPlaying() const;
+
+    void addFrame(const CanFrame &frame);
+
+signals:
+    void logMessage(const QString &msg);
+    void playbackFinished();
+
+private slots:
+    void sendNextFrame();
+
+private:
+    QVector<CanFrame> recordedFrames_;
+    CanWorker *worker_ = nullptr;
+    int playIndex_ = 0;
+    bool recording_ = false;
+    bool playing_ = false;
+    QString recordFileName_;
+
+    void saveToFile();
+    bool loadFromFile(const QString &fileName);
+};
+
+#endif

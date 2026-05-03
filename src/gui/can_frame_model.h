@@ -33,6 +33,7 @@ public slots:
     void setHighlightedCandidates(const QSet<uint32_t> &ids);
 
 signals:
+    void newFramesReady(const QVector<CanFrame> &frames);
     void frameUpdated(int row, const CanFrame &frame, QVector<int> changedBytes);
 
 private:

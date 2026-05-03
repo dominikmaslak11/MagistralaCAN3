@@ -25,7 +25,6 @@
 #include <QStackedWidget>
 #include <QSizePolicy>
 #include <QShortcut>
-#include <QMetaObject>
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include "gui/can_frame_model.h"
@@ -112,10 +111,6 @@ int main(int argc, char *argv[])
     modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
     modeCombo->setMaximumHeight(28);
 
-    // Lista kanałów (rozwijana) – umieszczona w panelu sterowania
-    auto *channelCombo = new QComboBox;
-    channelCombo->setMaximumHeight(28);
-
     auto *tuningWidget = new QWidget;
     auto *tuningLayout = new QHBoxLayout(tuningWidget);
     tuningLayout->setContentsMargins(0,0,0,0);
@@ -159,7 +154,6 @@ int main(int argc, char *argv[])
     controlLayout->addWidget(clearBtn); controlLayout->addWidget(saveBtn);
     controlLayout->addWidget(overwriteCheck); controlLayout->addWidget(highlightCheck);
     controlLayout->addWidget(new QLabel("Tryb:")); controlLayout->addWidget(modeCombo);
-    controlLayout->addWidget(new QLabel("Kanał:")); controlLayout->addWidget(channelCombo);
     controlLayout->addWidget(learnModeCombo); controlLayout->addWidget(learnStack);
     controlLayout->addWidget(tuningWidget);
     controlLayout->addWidget(toolCombo);
@@ -247,11 +241,6 @@ int main(int argc, char *argv[])
     LuaEngine luaEngine;
     luaEngine.setModel(model);
 
-    auto refreshChannelCombo = [&]() {
-        channelCombo->clear();
-        channelCombo->addItems(workers.keys());
-    };
-
     auto refreshGatewayChannels = [&]() {
         QStringList names = workers.keys();
         gwACombo->clear();
@@ -273,10 +262,15 @@ int main(int argc, char *argv[])
                 CanFrame f = model->frameAt(idx.row());
                 detailView->showFrame(f);
                 timeSeries->setActiveId(f.id);
+                // dodajemy ostatnią ramkę jako punkt startowy na wykresie
                 double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
                 timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
             }
         });
+    QObject::connect(model, &CanFrameModel::frameUpdated, [timeSeries](int row, const CanFrame &f, const QVector<int> &c) {
+        double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
+        timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
+    });
     QObject::connect(model, &CanFrameModel::frameUpdated,
         [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
             if (tableView->selectionModel()->isSelected(model->index(row,0)))
@@ -286,6 +280,7 @@ int main(int argc, char *argv[])
 
     // Dodawanie kanału
     QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
+        // Okno konfiguracji kanału z checkboxem „Z pliku”
         QDialog dialog(&window);
         dialog.setWindowTitle("Nowy kanał");
         auto *dlgLayout = new QVBoxLayout(&dialog);
@@ -320,19 +315,34 @@ int main(int argc, char *argv[])
             if (dlgFileCheck->isChecked()) {
                 // Odtwarzanie z pliku
                 QString path = dlgFileEdit->text();
-                if (path.isEmpty()) { debugLog("Nie wybrano pliku."); return; }
+                if (path.isEmpty()) {
+                    debugLog("Nie wybrano pliku.");
+                    return;
+                }
                 if (!playbackEngine.loadFile(path)) return;
                 debugLog(QString("Odtwarzanie offline: %1").arg(path));
 
+                // Tworzymy wirtualny worker do odtwarzania (dowolny, byle coś przekazać)
                 CanWorker *vw = new CanWorker;
                 vw->setMode(CanWorker::CAN20);
+                // Zapamiętujemy go w mapie (do celów Gateway itp.)
                 QString vname = QFileInfo(path).fileName();
                 workers[vname] = vw;
-                refreshChannelCombo();
-                refreshGatewayChannels();
+                    QObject::connect(model, &CanFrameModel::newFramesReady, [timeSeries](const QVector<CanFrame> &frames) {
+        if (!frames.isEmpty()) {
+            const CanFrame &f = frames.last();
+            double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
+            timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
+        }
+    });
+
+    refreshGatewayChannels();
+
                 playbackEngine.start(vw);
+                // Możemy dodać do modelu tablicy jakąś informację
+                model->clear(); // opcjonalnie
             } else {
-                // Fizyczny interfejs
+                // Fizyczny interfejs (stara logika)
                 QString ifname = dlgEdit->text().trimmed();
                 if (ifname.isEmpty()) return;
                 debugLog(QString("Dodawanie kanału: %1").arg(ifname));
@@ -352,19 +362,31 @@ int main(int argc, char *argv[])
                 QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
                 thread->start();
                 workers[ifname] = worker;
-                refreshChannelCombo();
-                refreshGatewayChannels();
+                    QObject::connect(model, &CanFrameModel::newFramesReady, [timeSeries](const QVector<CanFrame> &frames) {
+        if (!frames.isEmpty()) {
+            const CanFrame &f = frames.last();
+            double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
+            timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
+        }
+    });
+
+    refreshGatewayChannels();
             }
         }
     });
 
     // Usuwanie kanału
     QObject::connect(removeChannelBtn, &QPushButton::clicked, [&]() {
-        QString name = channelCombo->currentText();
-        if (!name.isEmpty() && workers.contains(name)) {
-            CanWorker *w = workers.take(name);
-            QMetaObject::invokeMethod(w, "stop", Qt::QueuedConnection);
-            refreshChannelCombo();
+        int idx = tabWidget->currentIndex();
+        // Zakładka 0 to Sniffer, 1 to Gateway – nie usuwamy
+        if (idx >= 2 && idx < tabWidget->count()) {
+            QString name = tabWidget->tabText(idx);
+            if (workers.contains(name)) {
+                CanWorker *w = workers.take(name);
+                w->stop();  // zatrzymaj wątek (jeśli uruchomiony)
+                // wątek i worker są zarządzane przez QThread::finished -> deleteLater
+            }
+            tabWidget->removeTab(idx);
             refreshGatewayChannels();
             debugLog(QString("Usunięto kanał: %1").arg(name));
         }
@@ -450,7 +472,7 @@ int main(int argc, char *argv[])
         debugLog("Reguły załadowane: " + QString::number(rules.size()));
     });
 
-    // Menu narzędzi
+    // Menu narzędzi (Lua, Nagrywanie, Odtwarzanie)
     QObject::connect(toolExecBtn, &QPushButton::clicked, [&]() {
         int idx = toolCombo->currentIndex();
         switch (idx) {
@@ -464,13 +486,13 @@ int main(int argc, char *argv[])
             if (!path.isEmpty()) recorder.startRecording(path);
             break;
         }
-        case 2: recorder.stopRecording(); break;
+        case 2: recorder.stopRecording(); break;      // Stop nagr.
         case 3: { // Odtwórz
             QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz sesję", "", "CAN Rec (*.can)");
             if (!path.isEmpty() && !workers.isEmpty()) recorder.startPlayback(workers.first());
             break;
         }
-        case 4: recorder.stopPlayback(); break;
+        case 4: recorder.stopPlayback(); break;        // Stop odtwarz.
         }
     });
 
@@ -489,6 +511,7 @@ int main(int argc, char *argv[])
     toggleShortcut(QKeySequence("Space"), eventCheck); addShortcut(QKeySequence("Ctrl+I"), iterBtn);
     addShortcut(QKeySequence("Ctrl+D"), addSampleBtn); addShortcut(QKeySequence("Ctrl+B"), computeCorrBtn);
 
+    // Skróty dla menu narzędziowego
     auto toolShortcut = [&](const QKeySequence &key, int comboIdx) {
         QShortcut *sc = new QShortcut(key, &window);
         QObject::connect(sc, &QShortcut::activated, [&, comboIdx]() {
@@ -502,7 +525,14 @@ int main(int argc, char *argv[])
     toolShortcut(QKeySequence("Ctrl+P"), 3);
     toolShortcut(QKeySequence("Ctrl+Shift+P"), 4);
 
-    refreshChannelCombo();
+        QObject::connect(model, &CanFrameModel::newFramesReady, [timeSeries](const QVector<CanFrame> &frames) {
+        if (!frames.isEmpty()) {
+            const CanFrame &f = frames.last();
+            double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
+            timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
+        }
+    });
+
     refreshGatewayChannels();
 
     window.show();

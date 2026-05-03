@@ -25,7 +25,6 @@
 #include <QStackedWidget>
 #include <QSizePolicy>
 #include <QShortcut>
-#include <QMetaObject>
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include "gui/can_frame_model.h"
@@ -34,7 +33,6 @@
 #include "gui/candump_exporter.h"
 #include "gui/candidate_list_view.h"
 #include "gui/byte_correlation_view.h"
-#include "gui/time_series_widget.h"
 #include "ml/assoc_learner.h"
 #include "ml/value_assoc_learner.h"
 #include "lua/lua_engine.h"
@@ -112,10 +110,6 @@ int main(int argc, char *argv[])
     modeCombo->addItems({"CAN 2.0", "CAN FD", "J1939"});
     modeCombo->setMaximumHeight(28);
 
-    // Lista kanałów (rozwijana) – umieszczona w panelu sterowania
-    auto *channelCombo = new QComboBox;
-    channelCombo->setMaximumHeight(28);
-
     auto *tuningWidget = new QWidget;
     auto *tuningLayout = new QHBoxLayout(tuningWidget);
     tuningLayout->setContentsMargins(0,0,0,0);
@@ -159,7 +153,6 @@ int main(int argc, char *argv[])
     controlLayout->addWidget(clearBtn); controlLayout->addWidget(saveBtn);
     controlLayout->addWidget(overwriteCheck); controlLayout->addWidget(highlightCheck);
     controlLayout->addWidget(new QLabel("Tryb:")); controlLayout->addWidget(modeCombo);
-    controlLayout->addWidget(new QLabel("Kanał:")); controlLayout->addWidget(channelCombo);
     controlLayout->addWidget(learnModeCombo); controlLayout->addWidget(learnStack);
     controlLayout->addWidget(tuningWidget);
     controlLayout->addWidget(toolCombo);
@@ -180,15 +173,13 @@ int main(int argc, char *argv[])
     auto *sidePanel = new QWidget;
     auto *sideLayout = new QVBoxLayout(sidePanel);
     auto *sideCombo = new QComboBox;
-    sideCombo->addItems({"Kandydaci asocjacji", "Korelacje bajtów", "Wykresy przebiegów"});
+    sideCombo->addItems({"Kandydaci asocjacji", "Korelacje bajtów"});
     sideCombo->setMaximumHeight(28);
     auto *sideStack = new QStackedWidget;
     auto *candidateListView = new CandidateListView;
     auto *byteCorrView = new ByteCorrelationView;
     sideStack->addWidget(candidateListView);
     sideStack->addWidget(byteCorrView);
-    auto *timeSeries = new TimeSeriesWidget;
-    sideStack->addWidget(timeSeries);
     sideLayout->addWidget(sideCombo);
     sideLayout->addWidget(sideStack);
     sidePanel->setLayout(sideLayout);
@@ -247,11 +238,6 @@ int main(int argc, char *argv[])
     LuaEngine luaEngine;
     luaEngine.setModel(model);
 
-    auto refreshChannelCombo = [&]() {
-        channelCombo->clear();
-        channelCombo->addItems(workers.keys());
-    };
-
     auto refreshGatewayChannels = [&]() {
         QStringList names = workers.keys();
         gwACombo->clear();
@@ -265,17 +251,9 @@ int main(int argc, char *argv[])
     QObject::connect(highlightCheck, &QCheckBox::toggled, model, &CanFrameModel::setHighlightEnabled);
 
     QObject::connect(tableView->selectionModel(), &QItemSelectionModel::currentRowChanged,
-        [model, detailView, timeSeries](const QModelIndex &idx, const QModelIndex &) {
-            if (!idx.isValid()) {
-                detailView->clearFrame();
-                timeSeries->clearGraphs();
-            } else {
-                CanFrame f = model->frameAt(idx.row());
-                detailView->showFrame(f);
-                timeSeries->setActiveId(f.id);
-                double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
-                timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
-            }
+        [model, detailView](const QModelIndex &idx, const QModelIndex &) {
+            if (!idx.isValid()) detailView->clearFrame();
+            else detailView->showFrame(model->frameAt(idx.row()));
         });
     QObject::connect(model, &CanFrameModel::frameUpdated,
         [tableView, model, detailView](int row, const CanFrame &f, QVector<int> changed) {
@@ -286,6 +264,7 @@ int main(int argc, char *argv[])
 
     // Dodawanie kanału
     QObject::connect(addChannelBtn, &QPushButton::clicked, [&]() {
+        // Okno konfiguracji kanału z checkboxem „Z pliku”
         QDialog dialog(&window);
         dialog.setWindowTitle("Nowy kanał");
         auto *dlgLayout = new QVBoxLayout(&dialog);
@@ -320,19 +299,26 @@ int main(int argc, char *argv[])
             if (dlgFileCheck->isChecked()) {
                 // Odtwarzanie z pliku
                 QString path = dlgFileEdit->text();
-                if (path.isEmpty()) { debugLog("Nie wybrano pliku."); return; }
+                if (path.isEmpty()) {
+                    debugLog("Nie wybrano pliku.");
+                    return;
+                }
                 if (!playbackEngine.loadFile(path)) return;
                 debugLog(QString("Odtwarzanie offline: %1").arg(path));
 
+                // Tworzymy wirtualny worker do odtwarzania (dowolny, byle coś przekazać)
                 CanWorker *vw = new CanWorker;
                 vw->setMode(CanWorker::CAN20);
+                // Zapamiętujemy go w mapie (do celów Gateway itp.)
                 QString vname = QFileInfo(path).fileName();
                 workers[vname] = vw;
-                refreshChannelCombo();
                 refreshGatewayChannels();
+
                 playbackEngine.start(vw);
+                // Możemy dodać do modelu tablicy jakąś informację
+                model->clear(); // opcjonalnie
             } else {
-                // Fizyczny interfejs
+                // Fizyczny interfejs (stara logika)
                 QString ifname = dlgEdit->text().trimmed();
                 if (ifname.isEmpty()) return;
                 debugLog(QString("Dodawanie kanału: %1").arg(ifname));
@@ -352,21 +338,8 @@ int main(int argc, char *argv[])
                 QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
                 thread->start();
                 workers[ifname] = worker;
-                refreshChannelCombo();
                 refreshGatewayChannels();
             }
-        }
-    });
-
-    // Usuwanie kanału
-    QObject::connect(removeChannelBtn, &QPushButton::clicked, [&]() {
-        QString name = channelCombo->currentText();
-        if (!name.isEmpty() && workers.contains(name)) {
-            CanWorker *w = workers.take(name);
-            QMetaObject::invokeMethod(w, "stop", Qt::QueuedConnection);
-            refreshChannelCombo();
-            refreshGatewayChannels();
-            debugLog(QString("Usunięto kanał: %1").arg(name));
         }
     });
 
@@ -410,10 +383,6 @@ int main(int argc, char *argv[])
         debugLog(QString("Lua: wysyłam 0x%1").arg(id, 3, 16, QChar('0')));
     });
 
-    QObject::connect(model, &CanFrameModel::frameUpdated, [timeSeries](int row, const CanFrame &f, const QVector<int> &c) {
-        double ts = f.timestamp.tv_sec + f.timestamp.tv_usec / 1e6;
-        timeSeries->addDataPoint(f.id, f.data, f.dlc, ts);
-    });
     QObject::connect(model, &CanFrameModel::frameUpdated, [&](int row, const CanFrame &f, const QVector<int> &c) {
         Q_UNUSED(row); Q_UNUSED(c);
         learner.processFrame(f); valueLearner.processFrame(f); luaEngine.handleFrame(f);
@@ -450,7 +419,7 @@ int main(int argc, char *argv[])
         debugLog("Reguły załadowane: " + QString::number(rules.size()));
     });
 
-    // Menu narzędzi
+    // Menu narzędzi (Lua, Nagrywanie, Odtwarzanie)
     QObject::connect(toolExecBtn, &QPushButton::clicked, [&]() {
         int idx = toolCombo->currentIndex();
         switch (idx) {
@@ -464,13 +433,13 @@ int main(int argc, char *argv[])
             if (!path.isEmpty()) recorder.startRecording(path);
             break;
         }
-        case 2: recorder.stopRecording(); break;
+        case 2: recorder.stopRecording(); break;      // Stop nagr.
         case 3: { // Odtwórz
             QString path = QFileDialog::getOpenFileName(nullptr, "Wybierz sesję", "", "CAN Rec (*.can)");
             if (!path.isEmpty() && !workers.isEmpty()) recorder.startPlayback(workers.first());
             break;
         }
-        case 4: recorder.stopPlayback(); break;
+        case 4: recorder.stopPlayback(); break;        // Stop odtwarz.
         }
     });
 
@@ -489,6 +458,7 @@ int main(int argc, char *argv[])
     toggleShortcut(QKeySequence("Space"), eventCheck); addShortcut(QKeySequence("Ctrl+I"), iterBtn);
     addShortcut(QKeySequence("Ctrl+D"), addSampleBtn); addShortcut(QKeySequence("Ctrl+B"), computeCorrBtn);
 
+    // Skróty dla menu narzędziowego
     auto toolShortcut = [&](const QKeySequence &key, int comboIdx) {
         QShortcut *sc = new QShortcut(key, &window);
         QObject::connect(sc, &QShortcut::activated, [&, comboIdx]() {
@@ -502,7 +472,6 @@ int main(int argc, char *argv[])
     toolShortcut(QKeySequence("Ctrl+P"), 3);
     toolShortcut(QKeySequence("Ctrl+Shift+P"), 4);
 
-    refreshChannelCombo();
     refreshGatewayChannels();
 
     window.show();

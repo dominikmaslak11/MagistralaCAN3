@@ -9,7 +9,10 @@ ThrottledFrameModel::ThrottledFrameModel(CanFrameModel *target, QObject *parent)
     connect(flushTimer_, &QTimer::timeout, this, [this]() {
         if (!pending_.isEmpty()) {
             for (const auto &f : pending_) {
+            emit model_->newFramesReady(pending_);
+            if (true) {
                 model_->addFrame(f);
+            }
             }
             pending_.clear();
         }
